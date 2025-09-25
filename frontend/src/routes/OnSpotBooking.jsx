@@ -4,13 +4,12 @@ import { useMembershipContext } from '@/components/MembershipContext'
 import MovieCard from '@/components/MovieCard'
 import Seats from '@/components/Seats'
 import { api } from '@/utils/api'
-import { isAllowedLvl } from '@/utils/levelCheck'
 import { getUserType } from '@/utils/user'
 import { useEffect, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import Swal from 'sweetalert2'
 
-const Movie = () => {
+const OnSpotBooking = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useLogin()
@@ -27,9 +26,9 @@ const Movie = () => {
   const userDesignation = getUserType(user.email)
   const movieId = new URLSearchParams(location.search).get('movieId')
 
-  const fetchSeats = async (showtimeId) => {
+  const fetchSeats = async (showtimeId, email) => {
     try {
-      const res = await api.get(`/seatmap/${showtimeId}`)
+      const res = await api.get(`/seatmap/${showtimeId}`, {})
       setSeats(res.data)
       const availableseats = res.data.filter((seat) => !seat.occupied).length
       setAvailableSeats(availableseats)
@@ -109,33 +108,101 @@ const Movie = () => {
   const maxAllowed = movieFree
     ? freePasses
     : (memberships?.find((membership) => membership.isValid)?.availQR ?? 0)
-  const bookSeats = async () => {
+  const bookSeats = async (email) => {
     try {
       setLoading(true)
-      const res = await api.put(`/seatmap/${showtime}`, {
-        seats: selectedSeats
+      const userRes = await api.post(`/auth/onspot`, {
+        email
       })
-      if (
-        res.status === 200 &&
-        res.data.some((seat) => seat.message === 'Seat assigned')
-      ) {
-        checkMembershipStatus()
-        navigate('/tickets')
-      } else {
+      if (userRes.status !== 200) {
+        throw new Error('Failed to create user')
+      }
+      const user = userRes.data
+      const txnCostRes = await api.post('/membership/onspotprices', {
+        seats: selectedSeats,
+        userDesignation: user.designation
+      })
+      if (txnCostRes.status !== 200) {
+        throw new Error('Failed to get transaction cost')
+      }
+      const { totalCost, memType } = txnCostRes.data
+      const res = await api.put(`/seatmap/onspot/${showtime}`, {
+        seats: selectedSeats,
+        user: user.userId,
+        cost: totalCost
+      })
+      if (res.status !== 200) {
+        // Refetch seats and reset selected seats when booking fails
+        await fetchSeats(showtime)
+        setSelectedSeats([])
         Swal.fire({
-          title: 'Error',
-          html: `<p>Error booking seats</p> ${res.data.map((seat) => `<p>${seat.seat}: ${seat.message}</p>`).join('')}`,
+          title: 'Booking Failed',
+          html: `<p>${res.data.error || 'Failed to book seats'}</p>`,
           icon: 'error'
         })
+        setLoading(false)
+        return // Exit early if booking fails
+      }
+      try {
+        const res = await api.post('/membership/requestonspot', {
+          userId: user.userId,
+          email,
+          seats: selectedSeats,
+          txnCost: totalCost,
+          memType
+        })
+        if (res.status !== 200) {
+          throw new Error('Failed to process payment')
+        }
+        const options = {
+          atomTokenId: res.data.atomTokenId,
+          merchId: res.data.merchId,
+          custEmail: user.email,
+          custMobile: user.phone,
+          returnUrl:
+            (import.meta.env.VITE_environment === 'development'
+              ? 'http://localhost:8000'
+              : document.location.origin) +
+            '/api/membership/redirect?onspot=true,seats=' +
+            selectedSeats.join(',') +
+            '&showtimeId=' +
+            showtime +
+            '&movieId=' +
+            movieId
+        }
+        let atom = new AtomPaynetz(options, 'uat')
+        await fetchSeats(showtime)
+        setSelectedSeats([])
+      } catch (error) {
+        console.error('Error processing payment:', error)
+
+        // Refetch seats and reset selection on payment error
+        await fetchSeats(showtime)
+        setSelectedSeats([])
+
+        Swal.fire({
+          title: 'Payment Error',
+          text: error.message || 'Error processing payment. Please try again.',
+          icon: 'error'
+        })
+        setLoading(false)
+        return // Exit early on payment error
       }
     } catch (error) {
+      console.log(error)
+
+      // Refetch seats and reset state on any error
+      await fetchSeats(showtime)
+      setSelectedSeats([])
+
       Swal.fire({
-        title: 'Error',
-        text: 'Error booking seats',
+        title: 'Booking Error',
+        text: error.message || 'Error booking seats. Please try again.',
         icon: 'error'
       })
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
   const mailUsers = async (showtimeId) => {
     try {
@@ -162,8 +229,7 @@ const Movie = () => {
     }
   }
   const BottomBar = () =>
-    selectedSeats.length > 0 &&
-    (hasMembership || movieFree) && (
+    selectedSeats.length > 0 && (
       <div className="sticky bottom-0 z-[1200] flex w-full flex-col items-center justify-between gap-2 bg-white dark:bg-[#141414] p-2 drop-shadow-2xl sm:flex-row sm:pr-8">
         {!!selectedSeats.length && (
           <p className="text-xl font-bold">
@@ -193,7 +259,18 @@ const Movie = () => {
               showCancelButton: true
             }).then((result) => {
               if (result.isConfirmed) {
-                bookSeats()
+                // ask for user's email id
+                Swal.fire({
+                  title: 'Enter your email',
+                  input: 'email',
+                  inputPlaceholder: 'Your email address',
+                  showCancelButton: true
+                }).then((emailResult) => {
+                  if (emailResult.isConfirmed) {
+                    const email = emailResult.value
+                    bookSeats(email)
+                  }
+                })
               }
             })
           }}
@@ -207,7 +284,23 @@ const Movie = () => {
   if (!movie) {
     return <Loading />
   }
-
+  const { success_payment, onspot } = Object.fromEntries(
+    new URLSearchParams(location.search)
+  )
+  if (success_payment && onspot === 'true') {
+    Swal.fire({
+      title: 'Success',
+      text: 'On-spot booking successful!',
+      icon: 'success'
+    })
+    const searchParams = new URLSearchParams(location.search)
+    searchParams.delete('success_payment')
+    searchParams.delete('onspot')
+    navigate({
+      pathname: location.pathname,
+      search: searchParams.toString()
+    })
+  }
   return (
     <div className="flex w-full flex-col items-center relative -mb-10">
       <div className="flex w-full flex-col items-center p-4">
@@ -270,86 +363,24 @@ const Movie = () => {
                 <div className="hidden bg-green-700 dark:bg-green-900 " />
               </div>
               <div className="hidden bg-green-300 dark:bg-green-500" />
-              <div className="flex flex-col gap-2 my-5">
-                <button
-                  onClick={() => {
-                    navigate('/order?showtime=' + showtime)
-                  }}
-                  className="rounded-md bg-orange-500 p-2 text-white"
-                >
-                  Order Food
-                </button>
-                {isAllowedLvl('movievolunteer', user.usertype) && (
-                  <>
-                    <button
-                      onClick={() => {
-                        navigate('/showtime?movieId=' + movieId)
-                      }}
-                      className="rounded-md bg-red-500 p-2 text-white"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => {
-                        navigate('/food?showtime=' + showtime)
-                      }}
-                      className="rounded-md bg-red-500 p-2 text-white"
-                    >
-                      Edit Food
-                    </button>
-                  </>
-                )}
-                {isAllowedLvl('admin', user.usertype) && (
-                  <button
-                    onClick={() => {
-                      mailUsers(showtime)
-                    }}
-                    className="rounded-md bg-blue-500 p-2 text-white"
-                  >
-                    Mail
-                  </button>
-                )}
-                {isAllowedLvl('admin', user.usertype) && (
-                  <button
-                    onClick={() => {
-                      navigate(`/onspot?showtime=${showtime}&movieId=${movieId}`);
-                    }}
-                    className="rounded-md bg-blue-500 p-2 text-white"
-                  >
-                    On Spot Booking
-                  </button>
-                )}
-              </div>
+              <div className="flex flex-col gap-2 my-5"></div>
             </div>
           </div>
         </div>
-        <div className="bg-white dark:bg-[#141414] rounded-xl p-2 sm:p-4 flex  w-full overflow-auto p-4">
+        <div className="bg-white dark:bg-[#141414] rounded-xl p-2 sm:p-4 flex  w-full overflow-auto">
           {seats && (
             <Seats
               seats={seats}
               selectedSeats={selectedSeats}
               setSelectedSeats={setSelectedSeats}
-              maxAllowed={maxAllowed}
+              maxAllowed={-1}
             />
           )}
         </div>
       </div>
       <BottomBar />
-      {!hasMembership && !movieFree && (
-        <div className="sticky bottom-0 z-[1200] flex w-full flex-col items-center justify-between gap-2 bg-white dark:bg-[#141414] p-2 drop-shadow-2xl sm:flex-row sm:pr-8">
-          <p className="text-xl">
-            No membership found. Please buy a membership to book tickets
-          </p>
-          <Link
-            to="/buy"
-            className="rounded-md bg-green-600 p-2 text-xl text-white"
-          >
-            Buy
-          </Link>
-        </div>
-      )}
     </div>
   )
 }
 
-export default Movie
+export default OnSpotBooking

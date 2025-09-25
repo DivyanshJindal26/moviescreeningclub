@@ -30,6 +30,7 @@ import Tickets from '@/routes/Tickets'
 import MovieList from '@/routes/VotePage'
 import AddBaseMem from '@/routes/addBaseMem'
 import TicketPrices from '@/routes/TicketPrices'
+import OnSpotBooking from '@/routes/OnSpotBooking'
 
 const Scanner = lazy(() => import('@/routes/Scanner'))
 
@@ -121,6 +122,14 @@ function App() {
                   element={
                     <AuthenticatedRoute>
                       <MyAccount />
+                    </AuthenticatedRoute>
+                  }
+                />
+                <Route
+                  path="/onspot"
+                  element={
+                    <AuthenticatedRoute minLevel="admin">
+                      <OnSpotBooking />
                     </AuthenticatedRoute>
                   }
                 />

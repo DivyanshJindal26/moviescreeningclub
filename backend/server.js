@@ -22,6 +22,8 @@ mongoose
   .then(() => console.log('Connected to MongoDB'))
   .catch((error) => console.error('MongoDB connection error:', error))
 
+require('./utils/ticketWatcher.js')
+
 const corsOptions = {
   origin: (origin, callback) => {
     if (process.env.NODE_ENV === 'development' || true) {

@@ -156,4 +156,49 @@ const update = async (req, res) => {
   }
 }
 
-module.exports = { signup, login, update }
+const onSpotUserCreation = async(req, res) => {
+  try {
+    const { email} = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Missing email' });
+    }
+    let user = await User.findOne({ email });
+    if (!user) {
+      const newUser = new User({
+        email,
+        name: 'OnSpotBooking',
+        phone: 9999999999,
+        password: await bcrypt.hash('iitmandi', 10),
+        designation: getUserType(email) || 'other'
+      });
+      
+      try {
+        user = await newUser.save();
+        console.log(`Created new user account for: ${email}`);
+      } catch (error) {
+        console.error('Error creating new user:', error);
+        return res.status(500).json({ error: 'Failed to create user account' });
+      }
+    }
+    
+    const userId = user._id;
+    return res.status(200).json({ 
+      success: true, 
+      userId,
+      email: user.email,
+      designation: user.designation,
+      name: user.name || 'user',
+      phone: user.phone || '',
+      message: 'User account processed successfully' 
+    });
+  } catch (error) {
+    console.error('Error in onSpotUserCreation:', error);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Internal server error during user processing' 
+    });
+  }
+}
+
+
+module.exports = { signup, login, update, onSpotUserCreation }

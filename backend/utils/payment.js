@@ -112,6 +112,8 @@ const getAtomFromGateway = async (
       .json({ error: 'Internal server error or Payment Gateway down' })
   }
   const parsedRespFromGateway = qs.parse(resFromGateway.data)
+  console.log(parsedRespFromGateway)
+
   if (!parsedRespFromGateway.encData) {
     return { error: 'No encData in response from Gateway' }
   }

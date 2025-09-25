@@ -136,6 +136,9 @@ const Navbar = () => {
                 <NavItem to="/adddropvolunteer" toggleMenu={toggleMenu}>
                   Add/Drop Volunteer
                 </NavItem>
+                <NavItem to="/onspot" toggleMenu={toggleMenu}>
+                  On Spot Booking
+                </NavItem>
                 <NavItem to="/metrics" toggleMenu={toggleMenu}>
                   Metrics
                 </NavItem>

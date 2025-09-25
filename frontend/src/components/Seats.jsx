@@ -23,6 +23,8 @@ const Seats = ({ seats, selectedSeats, setSelectedSeats, maxAllowed }) => {
       setSelectedSeats(selectedSeats.filter((seat) => seat !== seatNo))
     } else if (selectedSeats.length < maxAllowed) {
       setSelectedSeats([...selectedSeats, seatNo])
+    } else if (maxAllowed == -1) {
+      setSelectedSeats([...selectedSeats, seatNo])
     } else {
       alert(`You can only select ${maxAllowed} seats`)
     }

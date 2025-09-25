@@ -8,7 +8,9 @@ const {
   assignBaseMembership,
   getMembershipPrices,
   setMembershipPrice,
-  createMembership
+  createMembership,
+  getOnSpotCost,
+  requestOnSpotMembership
 } = require('@/controllers/user/memberships.controller')
 const { verifyJWTWithRole } = require('@/middleware')
 
@@ -19,5 +21,7 @@ router.post('/assign-base-membership', verifyJWTWithRole('admin'), assignBaseMem
 router.get('/prices', verifyJWTWithRole('standard'), getMembershipPrices)
 router.post('/prices', verifyJWTWithRole('admin'), setMembershipPrice)
 router.post('/create', verifyJWTWithRole('admin'), createMembership)
+router.post('/onspotprices', verifyJWTWithRole('standard'), getOnSpotCost)
+router.post('/requestonspot', verifyJWTWithRole('standard'), requestOnSpotMembership)
 // router.put('/suspend/:id', verifyJWTWithRole('standard'), suspendMembership)
 module.exports = router

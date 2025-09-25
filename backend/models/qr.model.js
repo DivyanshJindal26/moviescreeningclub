@@ -11,11 +11,22 @@ const QRSchema = new mongoose.Schema({
     default: false
   },
   membership: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.Mixed,
     ref: 'Membership',
     required: function () {
-      return !this.free
+      return !this.free && this.membershipType !== 'onspot'
+    },
+    validate: {
+      validator: function (v) {
+        return v === 'onspot' || mongoose.Types.ObjectId.isValid(v)
+      },
+      message: (props) => `${props.value} is not a valid ObjectId or 'onspot'!`
     }
+  },
+  membershipType: {
+    type: String,
+    enum: ['normal', 'onspot'],
+    default: 'normal'
   },
   showtime: {
     type: mongoose.Schema.Types.ObjectId,
