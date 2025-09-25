@@ -51,7 +51,9 @@ const getOnSpotCost = async (req, res) => {
   }
 }
 
-const setMembershipPrice = async (req, res) => {
+const setMembershipPrice = async (req, res) => {}
+
+const setMembershiPrice = async (req, res) => {
   try {
     const { name, price, validity, availQR } = req.body
 

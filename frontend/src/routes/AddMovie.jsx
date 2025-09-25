@@ -57,7 +57,7 @@ const MovieForm = () => {
       <div className="flex max-md:flex-col gap-8 p-4 sm:gap-6 sm:p-6">
         <form
           onSubmit={handleSubmit}
-          className="align-end max-sm:w-full col-span-2 flex flex-col items-center gap-4 overflow-auto rounded-3xl bg-white shadow-xl dark:bg-[#212121] p-4 shadow-lg sm:gap-6 sm:p-6"
+          className="align-end max-sm:w-full col-span-2 flex flex-col items-center gap-4 overflow-auto rounded-3xl bg-white dark:bg-[#212121] p-4 shadow-lg sm:gap-6 sm:p-6"
         >
           <label
             htmlFor="title"

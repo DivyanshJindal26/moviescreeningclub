@@ -15,4 +15,6 @@ const membershipPriceSchema = new mongoose.Schema({
 // Create a Mongoose model for 'ticketPrice' collection
 const MembershipPrice = mongoose.model("MembershipPrice", membershipPriceSchema, "ticketPrice");
 
+
 module.exports = MembershipPrice;
+

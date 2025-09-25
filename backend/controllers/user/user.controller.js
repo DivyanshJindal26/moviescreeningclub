@@ -1,4 +1,5 @@
 const User = require('@/models/user/user.model')
+const MemPrice = require('@/models/membershipprice.model')
 
 const fetchUsers = async (req, res) => {
   try {
@@ -57,4 +58,33 @@ const userType = async (req, res) => {
   }
 }
 
-module.exports = { fetchUsers, updateUserType, userType }
+const userMembershipData = async (req, res) => {
+  try {
+    const email = req.params.email
+    const user = await User.findOne({ email: email.toLowerCase() })
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+    const membershipPrices = await MemPrice.find();
+    const userPrices = membershipPrices.map((membership) => {
+      const price = membership.price.find((price) => price.type === user.designation);
+      return {
+        membershipName: membership.name,
+        price: price ? price.price : null
+      };
+    });
+    res.status(200).json({ user: {
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      designation: user.designation,
+      usertype: user.usertype
+    }, userPrices })
+  }
+  catch (error) {
+    console.error('Error fetching user membership data:', error)
+    res.status(500).json({ error: 'Error fetching user membership data' })
+  }
+}
+
+module.exports = { fetchUsers, updateUserType, userType, userMembershipData }
