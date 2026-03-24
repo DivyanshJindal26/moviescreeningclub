@@ -44,8 +44,8 @@ const rows = [
   {
     prefix: "G",
     count: 38,
-    left: 14,
-    right: 13,
+    left: 13,
+    right: 14,
     center: 11,
   },
   {
@@ -58,8 +58,8 @@ const rows = [
   {
     prefix: "I",
     count: 41,
-    left: 15,
-    right: 14,
+    left: 14,
+    right: 15,
     center: 12,
   },
   {
@@ -114,30 +114,30 @@ const rows = [
   {
     prefix: "Q",
     count: 42,
-    left: 14,
-    right: 15,
+    left: 15,
+    right: 14,
     center: 13,
   },
   {
     prefix: "R",
     count: 43,
-    left: 14,
-    right: 15,
+    left: 15,
+    right: 14,
     center: 14,
   },
   {
     prefix: "S",
     count: 43,
-    left: 14,
-    right: 15,
+    left: 15,
+    right: 14,
     center: 14,
   },
   {
     prefix: "T",
-    count: 44,
-    left: 14,
-    right: 15,
-    center: 15,
+    count: 43,
+    left: 15,
+    right: 14,
+    center: 14,
   },
 ];
 

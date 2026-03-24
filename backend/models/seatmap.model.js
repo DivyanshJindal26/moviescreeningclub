@@ -82,7 +82,7 @@ const SeatMapSchema = new mongoose.Schema({
             rowCount = 43
             break
           case 'T':
-            rowCount = 44
+            rowCount = 43
             break
           default:
             rowCount = 0
