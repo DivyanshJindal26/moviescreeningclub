@@ -1,4 +1,4 @@
-rows = [
+const rows = [
   {
     prefix: "A",
     count: 27,
