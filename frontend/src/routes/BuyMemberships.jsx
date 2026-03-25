@@ -132,7 +132,14 @@ const BuyMemberships = () => {
   const { hasMembership } = useMembershipContext()
   const [loading, setLoading] = useState(false)
   const [memData, setMemData] = useState([]) // Store fetched data
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const userDesignation = getUserType(user.email)
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -144,6 +151,19 @@ const BuyMemberships = () => {
 
   if (hasMembership) {
     return <Navigate to="/tickets" />
+  }
+
+  if (!isMobile) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8 font-monts text-center">
+        <h2 className="font-bn text-3xl font-bold mb-4">Mobile Only</h2>
+        <p className="text-lg text-gray-600 dark:text-gray-400">
+          Payments are only supported on mobile devices.
+          <br />
+          Please open this page on your phone to purchase a membership.
+        </p>
+      </div>
+    )
   }
 
   const colors = [
