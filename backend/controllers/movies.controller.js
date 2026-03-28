@@ -65,11 +65,15 @@ const updateMovie = async (req, res) => {
 
 const deleteMovie = async (req, res) => {
   try {
-    return res.status(400).json({ error: 'Not allowed' })
     const movieId = req.params.id
+
     const result = await Movie.findByIdAndDelete(movieId)
 
-    res.json(result)
+    if (!result) {
+      return res.status(404).json({ error: 'Movie not found' })
+    }
+
+    res.status(200).json({ message: 'Movie deleted successfully' })
   } catch (error) {
     console.error('Error deleting movie:', error)
     res.status(500).json({ error: 'Error deleting movie' })
@@ -169,16 +173,21 @@ const addMovieShowtimes = async (req, res) => {
 
 const deleteMovieShowtimes = async (req, res) => {
   try {
-    return res.status(400).json({ error: 'Not allowed' })
     const { movieId, showtimeId } = req.params
+
     const movie = await Movie.findById(movieId)
+
     if (!movie) {
       return res.status(404).json({ error: 'Movie not found' })
     }
+
     movie.showtimes.pull({ _id: showtimeId })
+
     await movie.save()
+
     await SeatMap.deleteOne({ showtimeId })
-    res.json({ message: 'Showtime deleted successfully' })
+
+    res.status(200).json({ message: 'Showtime deleted successfully' })
   } catch (error) {
     console.error('Error deleting showtime:', error)
     res.status(500).json({ error: 'Internal server error' })

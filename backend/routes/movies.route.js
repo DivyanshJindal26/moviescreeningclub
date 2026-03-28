@@ -20,17 +20,17 @@ router.get(
   verifyJWTWithRole('standard'),
   getMovieByShowTime
 )
-router.post('/add', verifyJWTWithRole('movievolunteer'), addMovie)
-router.put('/:id', verifyJWTWithRole('movievolunteer'), updateMovie)
-router.delete('/:id', verifyJWTWithRole('movievolunteer'), deleteMovie)
+router.post('/add', verifyJWTWithRole(['movievolunteer','admin']), addMovie)
+router.put('/:id', verifyJWTWithRole(['movievolunteer','admin']), updateMovie)
+router.delete('/:id', verifyJWTWithRole(['movievolunteer','admin']), deleteMovie)
 router.post(
   '/:movieId/showtimes',
-  verifyJWTWithRole('movievolunteer'),
+  verifyJWTWithRole(['movievolunteer','admin']),
   addMovieShowtimes
 )
 router.delete(
   '/:movieId/:showtimeId',
-  verifyJWTWithRole('movievolunteer'),
+  verifyJWTWithRole(['movievolunteer' , 'admin']),
   deleteMovieShowtimes
 )
 
