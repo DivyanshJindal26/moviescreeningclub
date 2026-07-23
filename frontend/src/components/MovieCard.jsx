@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 
-const MoieCard = ({ movie, small = true, navigate = false, children }) => {
+const MovieCard = ({ movie, small = true, navigate = false, children }) => {
   const Container = navigate ? Link : 'div'
   const containerProps = navigate ? { to: `/movie?movieId=${movie._id}` } : {}
 
@@ -35,4 +35,4 @@ const MoieCard = ({ movie, small = true, navigate = false, children }) => {
   )
 }
 
-export default MoieCard
+export default MovieCard

@@ -73,9 +73,13 @@ const userMembershipData = async (req, res) => {
       const price = membership.price.find(
         (price) => price.type === user.designation
       )
+      const passes = membership.passType === 'filmFest'
+        ? membership.movieCount || membership.availQR
+        : membership.availQR
       return {
         membershipName: membership.name,
-        price: price ? price.price : null
+        price: price ? price.price : null,
+        passes
       }
     })
     res.status(200).json({

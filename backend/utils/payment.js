@@ -128,9 +128,81 @@ const getAtomFromGateway = async (
   }
 }
 
+// Query Atom's transaction status API to confirm payment server-side.
+// Returns { f_code, mmp_txn, amt, mer_txn } — f_code === 'Ok' means success.
+// Never trust the redirect payload alone; always confirm via this call.
+//
+// NOTE: The exact field paths in Atom's status response depend on their API
+// version. If the mapping below doesn't match live responses, inspect
+// rawAtomResponse in the PendingTransaction record to find the right paths.
+const queryAtomTransactionStatus = async (merchTxnId, amount, date) => {
+  // Fall back to deriving the status URL from the auth URL if not explicitly set
+  const statusUrl =
+    process.env.PAY_STATUS_URL || authUrl.replace('/auth', '/transstatus')
+
+  const reqPayload = {
+    payInstrument: {
+      headDetails: {
+        version: 'OTSv1.1',
+        api: 'TRANSSTATUS',
+        platform: 'FLASH'
+      },
+      merchDetails: {
+        merchId: merchId,
+        password: merchPass,
+        userid: process.env.PROD_NAME || 'NSE',
+        merchTxnId: merchTxnId,
+        merchTxnDate: date
+      },
+      payDetails: {
+        amount: amount.toString()
+      }
+    }
+  }
+
+  const encReq = encrypt(JSON.stringify(reqPayload))
+  const response = await axios.post(
+    statusUrl,
+    qs.stringify({ encData: encReq, merchId }),
+    {
+      headers: {
+        'cache-control': 'no-cache',
+        'content-type': 'application/x-www-form-urlencoded'
+      }
+    }
+  )
+
+  const parsed = qs.parse(response.data)
+  if (!parsed.encData) {
+    return { error: 'No encData in status response', raw: response.data }
+  }
+
+  const decrypted = JSON.parse(decrypt(parsed.encData))
+  const instrument = decrypted.payInstrument || decrypted
+
+  // Map Atom response fields — statusCode 'OTS0000' means success
+  const statusCode = instrument.responseDetails?.statusCode
+  const f_code =
+    instrument.responseDetails?.f_code ||
+    instrument.payDetails?.f_code ||
+    (statusCode === 'OTS0000' ? 'Ok' : 'NOT Ok')
+
+  return {
+    f_code,
+    mmp_txn: instrument.payDetails?.atomTxnId || instrument.mmp_txn,
+    amt:
+      instrument.payDetails?.totalAmount ||
+      instrument.payDetails?.amount ||
+      instrument.amt,
+    mer_txn: instrument.merchDetails?.merchTxnId || instrument.mer_txn,
+    raw: decrypted
+  }
+}
+
 module.exports = {
   encrypt,
   decrypt,
   generateSignature,
-  getAtomFromGateway
+  getAtomFromGateway,
+  queryAtomTransactionStatus
 }

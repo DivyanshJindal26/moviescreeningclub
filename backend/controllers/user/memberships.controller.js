@@ -1,13 +1,82 @@
 const Membership = require('@/models/membership.model')
+const PendingTransaction = require('@/models/pendingTransaction.model')
 const User = require('@/models/user/user.model')
 const MemPrice = require('@/models/membershipprice.model')
 const crypto = require('crypto')
-const { membershipMail } = require('@/utils/mail')
+const { membershipMail, membershipFailureMail } = require('@/utils/mail')
 const { getAmount } = require('@/utils/membership')
-const { getAtomFromGateway } = require('@/utils/payment')
+const {
+  getAtomFromGateway,
+  decrypt,
+  generateSignature,
+  queryAtomTransactionStatus
+} = require('@/utils/payment')
 require('dotenv').config()
 
-const { decrypt, generateSignature } = require('@/utils/payment')
+// ---------------------------------------------------------------------------
+// Shared helper: create membership record + send confirmation email.
+// Called by both the returnUrl handler and the background reconciliation job.
+//
+// Idempotency is enforced by the caller: the PendingTransaction must be
+// atomically transitioned from PENDING → COMPLETED before calling this.
+// If that transition fails (already done), the caller must skip this call.
+// ---------------------------------------------------------------------------
+const issueMembership = async ({ userId, memtype, txnId, amount, email }) => {
+  const anyMems = await Membership.find({ user: userId, isValid: true })
+  for (const anyMem of anyMems) {
+    let shouldInvalidate = false
+    if (anyMem.validitydate < Date.now()) {
+      shouldInvalidate = true
+    } else if (anyMem.memtype === 'filmFest') {
+      shouldInvalidate =
+        (anyMem.moviesUsed || []).length >= (anyMem.movieCount || 0)
+    } else {
+      shouldInvalidate = anyMem.availQR <= 0
+    }
+
+    if (shouldInvalidate) {
+      anyMem.isValid = false
+      if (anyMem.memtype !== 'filmFest') anyMem.availQR = 0
+      await anyMem.save()
+    } else {
+      // User already has a valid membership — this can happen if they bought
+      // twice in rapid succession. Skip issuance; money will need manual review.
+      console.warn(
+        `[issueMembership] user ${userId} already has active membership, skipping issuance for txn ${txnId}`
+      )
+      return { skipped: true }
+    }
+  }
+
+  const memData = await MemPrice.find()
+  const memDetails = memData.find((m) => m.name === memtype)
+  if (!memDetails) throw new Error(`Unknown memtype: ${memtype}`)
+
+  const { validity, availQR, passType, movieCount } = memDetails
+  const membershipData = {
+    user: userId,
+    memtype,
+    txnId,
+    validity,
+    availQR,
+    amount,
+    validitydate: new Date(Date.now() + validity * 1000)
+  }
+  if (passType === 'filmFest') {
+    membershipData.movieCount = movieCount
+    membershipData.moviesUsed = []
+  }
+
+  const membership = new Membership(membershipData)
+  await membership.save()
+  try {
+    await membershipMail(memtype, email.toLowerCase())
+  } catch (mailError) {
+    console.error(`[issueMembership] membership saved but email failed for txn ${txnId}:`, mailError.message)
+  }
+  console.log(`[issueMembership] issued ${memtype} membership for txn ${txnId}`)
+  return { membership }
+}
 
 const getMembershipPrices = async (req, res) => {
   try {
@@ -46,91 +115,151 @@ const setMembershipPrice = async (req, res) => {
   }
 }
 
+// POST /api/membership/redirect — Atom's returnUrl handler.
+//
+// Strategy: decrypt the redirect payload to get the txnId, then ALWAYS
+// confirm via queryAtomTransactionStatus() before issuing anything.
+// We never trust the redirect payload alone — it can be dropped, replayed,
+// or tampered with. The status API is ground truth.
+//
+// Idempotency: we atomically transition PendingTransaction PENDING → COMPLETED
+// using findOneAndUpdate with a PENDING filter. If the transition returns null,
+// a parallel process (another redirect hit or the reconciliation job) already
+// handled it — we skip issuance and redirect to success.
 const saveMembership = async (req, res) => {
+  let txnId
   try {
-    const decrypted_data = decrypt(req.body.encData)
-    const jsonData = JSON.parse(decrypted_data)
+    // Step 1: Decrypt redirect payload to identify the transaction.
+    // If decryption fails we can't identify the txn — surface an error.
+    let jsonData
+    try {
+      jsonData = JSON.parse(decrypt(req.body.encData))
+    } catch (decryptErr) {
+      console.error('[saveMembership] failed to decrypt encData:', decryptErr.message)
+      return res.redirect(`${process.env.FRONTEND_URL}/home?err=decrypt_failed`)
+    }
+
+    txnId = jsonData.payInstrument?.merchDetails?.merchTxnId
+    if (!txnId) {
+      console.error('[saveMembership] no txnId in decrypted payload')
+      return res.redirect(`${process.env.FRONTEND_URL}/home?err=missing_txn_id`)
+    }
+
+    // Step 2: Signature check — log mismatches but do NOT bail out yet.
+    // We still call the status API because the payment may be legitimate even
+    // if the redirect payload was somehow corrupted in transit.
     const signature = generateSignature(jsonData.payInstrument)
-    if (signature !== jsonData.payInstrument.payDetails.signature) {
-      console.log('signature mismatched!!')
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/home?err=signature_mismatched`
-      )
-    }
-    if (jsonData.payInstrument.responseDetails.statusCode !== 'OTS0000') {
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/home?err=transaction_failed`
-      )
+    if (signature !== jsonData.payInstrument?.payDetails?.signature) {
+      console.warn(`[saveMembership] signature mismatch for txn ${txnId} — will still confirm via status API`)
     }
 
-    const memtype = jsonData.payInstrument.extras.udf1
-    const userId = jsonData.payInstrument.extras.udf2
-    const email = jsonData.payInstrument.custDetails.custEmail.toLowerCase()
-    const txnId = jsonData.payInstrument.merchDetails.merchTxnId
-    const anyMems = await Membership.find({
-      user: userId,
-      isValid: true
-    })
-    for (anyMem of anyMems) {
-      let shouldInvalidate = false
+    // Step 3: Check if we've already handled this transaction (idempotent re-hits).
+    const existingTxn = await PendingTransaction.findOne({ merchTxnId: txnId })
+    if (!existingTxn) {
+      // This shouldn't happen in normal flow — log and error out.
+      console.error(`[saveMembership] no PendingTransaction found for txnId ${txnId}`)
+      return res.redirect(`${process.env.FRONTEND_URL}/home?err=unknown_transaction`)
+    }
+    if (existingTxn.status === 'COMPLETED') {
+      return res.redirect(`${process.env.FRONTEND_URL}/home?success_payment=true`)
+    }
+    if (existingTxn.status === 'FAILED') {
+      return res.redirect(`${process.env.FRONTEND_URL}/home?err=transaction_failed`)
+    }
+    if (existingTxn.status === 'MANUAL_REVIEW') {
+      return res.redirect(`${process.env.FRONTEND_URL}/home?err=payment_under_review`)
+    }
 
-      // Check if membership should be invalidated based on type
-      if (anyMem.validitydate < Date.now()) {
-        shouldInvalidate = true
-      } else if (anyMem.memtype === 'filmFest') {
-        const moviesUsed = anyMem.moviesUsed || []
-        const movieCount = anyMem.movieCount || 0
-        shouldInvalidate = moviesUsed.length >= movieCount
-      } else {
-        shouldInvalidate = anyMem.availQR <= 0
+    // Step 4: Confirm with Atom's status API (server-to-server).
+    const txnDate = existingTxn.createdAt
+      .toISOString()
+      .replace(/T/, ' ')
+      .replace(/\..+/, '')
+
+    let atomStatus
+    try {
+      atomStatus = await queryAtomTransactionStatus(
+        txnId,
+        existingTxn.amount,
+        txnDate
+      )
+    } catch (statusErr) {
+      // Network or decryption error — keep PENDING, reconciliation job will retry.
+      console.error(`[saveMembership] status API error for txn ${txnId}:`, statusErr.message)
+      return res.redirect(`${process.env.FRONTEND_URL}/home?err=payment_confirming`)
+    }
+
+    console.log(`[saveMembership] Atom status for txn ${txnId}:`, atomStatus)
+
+    if (atomStatus.f_code === 'Ok') {
+      // Step 5a: Atomically claim the transaction — prevents duplicate issuance
+      // if the reconciliation job fires at the exact same moment.
+      const claimed = await PendingTransaction.findOneAndUpdate(
+        { merchTxnId: txnId, status: 'PENDING' },
+        {
+          $set: {
+            status: 'COMPLETED',
+            atomTxnId: atomStatus.mmp_txn,
+            rawAtomResponse: atomStatus,
+            lastReconciliationAt: new Date()
+          },
+          $inc: { reconciliationAttempts: 1 }
+        },
+        { new: false } // return the OLD document — null means already processed
+      )
+
+      if (!claimed) {
+        // Another process beat us to it — membership already issued.
+        console.log(`[saveMembership] txn ${txnId} already claimed, skipping duplicate issuance`)
+        return res.redirect(`${process.env.FRONTEND_URL}/home?success_payment=true`)
       }
 
-      if (shouldInvalidate) {
-        anyMem.isValid = false
-        if (anyMem.memtype !== 'filmFest') {
-          anyMem.availQR = 0
+      const user = await User.findById(existingTxn.userId)
+      await issueMembership({
+        userId: existingTxn.userId,
+        memtype: existingTxn.memtype,
+        txnId,
+        amount: existingTxn.amount,
+        email: user.email
+      })
+      return res.redirect(`${process.env.FRONTEND_URL}/home?success_payment=true`)
+
+    } else if (atomStatus.error) {
+      // Status API itself errored (network/encryption issue) — keep PENDING.
+      console.warn(`[saveMembership] status API returned error for txn ${txnId}:`, atomStatus.error)
+      return res.redirect(`${process.env.FRONTEND_URL}/home?err=payment_confirming`)
+
+    } else {
+      // Atom confirmed payment failed or is unambiguously not Ok.
+      await PendingTransaction.findOneAndUpdate(
+        { merchTxnId: txnId, status: 'PENDING' },
+        {
+          $set: {
+            status: 'FAILED',
+            rawAtomResponse: atomStatus,
+            lastReconciliationAt: new Date()
+          },
+          $inc: { reconciliationAttempts: 1 }
         }
-        await anyMem.save()
-      } else {
-        return res.redirect(`${process.env.FRONTEND_URL}/home`)
+      )
+      const user = await User.findById(existingTxn.userId)
+      if (user) {
+        membershipFailureMail(user.email).catch((e) =>
+          console.error('[saveMembership] failure mail error:', e.message)
+        )
       }
+      return res.redirect(`${process.env.FRONTEND_URL}/home?err=transaction_failed`)
     }
-    const memData = await MemPrice.find()
-    const memDetails = memData.find((m) => m.name === memtype)
-    const { validity, availQR, passType, movieCount } = memDetails
-
-    const membershipData = {
-      user: userId,
-      memtype,
-      txnId,
-      validity,
-      availQR,
-      amount: await getAmount(memtype, email),
-      validitydate: new Date(Date.now() + validity * 1000)
-    }
-
-    // Add Film Fest Pass specific fields
-    if (passType === 'filmFest') {
-      membershipData.movieCount = movieCount
-      membershipData.moviesUsed = []
-    }
-
-    const newusermem = new Membership(membershipData)
-    const savedusermem = await newusermem.save()
-    console.log('Usermem details saved:', savedusermem)
-    await membershipMail(memtype, email.toLowerCase())
-    return res.redirect(`${process.env.FRONTEND_URL}/home?success_payment=true`)
   } catch (error) {
-    console.error('Error saving Usermem:', error)
-    return res.redirect(
-      `${process.env.FRONTEND_URL}/home?err=internal_server_error`
-    )
+    console.error(`[saveMembership] unexpected error for txn ${txnId}:`, error)
+    // Do NOT mark as FAILED on unexpected errors — keep PENDING for reconciliation.
+    return res.redirect(`${process.env.FRONTEND_URL}/home?err=internal_server_error`)
   }
 }
 
 const manualAdd = async (req, res) => {
   try {
-    const { userEmail, txnId, membershipType, amount } = req.body
+    const { userEmail, txnId, membershipType, amount, passes } = req.body
 
     const user = await User.findOne({ email: userEmail.toLowerCase() })
     if (!user) {
@@ -144,6 +273,16 @@ const manualAdd = async (req, res) => {
 
     const { validity, availQR, passType, movieCount } = memDetails
 
+    const parsedPasses =
+      passes !== undefined && passes !== '' && !Number.isNaN(Number(passes))
+        ? Number(passes)
+        : availQR
+
+    const parsedAmount = Number(amount)
+    if (Number.isNaN(parsedAmount)) {
+      return res.status(400).json({ error: 'Invalid amount' })
+    }
+
     // Map membership name to enum value
     const memtypeMapping = {
       base: 'base',
@@ -154,26 +293,34 @@ const manualAdd = async (req, res) => {
       'Foodie Film Fest': 'filmFest'
     }
 
+    const memtype =
+      memtypeMapping[membershipType] ||
+      membershipType.toLowerCase().replace(/\s+/g, '')
+
     const membershipData = {
       user: user._id,
-      memtype: memtypeMapping[membershipType] || membershipType.toLowerCase(),
+      memtype,
       txnId,
       validity,
-      availQR,
-      amount,
+      availQR: parsedPasses,
+      amount: parsedAmount,
       validitydate: new Date(Date.now() + validity * 1000)
     }
 
     // Add Film Fest Pass specific fields
     if (passType === 'filmFest') {
-      membershipData.movieCount = movieCount
+      membershipData.movieCount = parsedPasses
       membershipData.moviesUsed = []
     }
 
     const newMembership = new Membership(membershipData)
 
     await newMembership.save()
-    await membershipMail(membershipType, userEmail.toLowerCase())
+    try {
+      await membershipMail(membershipType, userEmail.toLowerCase())
+    } catch (mailError) {
+      console.error('Membership saved, email failed:', mailError)
+    }
 
     res
       .status(201)
@@ -228,18 +375,16 @@ const requestMembership = async (req, res) => {
       return res.status(400).json({ message: 'Membership type is required' })
     }
     const user = await User.findById(userId)
-
     if (!user) {
       return res.status(404).json({ message: 'User not found' })
     }
+
     const userMemberships = await Membership.find({
       user: user._id,
       isValid: true
     })
-    for (mem of userMemberships) {
+    for (const mem of userMemberships) {
       let hasValidPasses = false
-
-      // Check if membership still has valid passes based on type
       if (mem.memtype === 'filmFest') {
         const moviesUsed = mem.moviesUsed || []
         const movieCount = mem.movieCount || 0
@@ -255,9 +400,7 @@ const requestMembership = async (req, res) => {
           .json({ message: 'User already has a valid membership' })
       }
       mem.isValid = false
-      if (mem.memtype !== 'filmFest') {
-        mem.availQR = 0
-      }
+      if (mem.memtype !== 'filmFest') mem.availQR = 0
       await mem.save()
     }
 
@@ -267,15 +410,24 @@ const requestMembership = async (req, res) => {
       .replace(/T/, ' ')
       .replace(/\..+/, '')
     const amount = await getAmount(memtype, user.email)
-    const userEmailId = user.email
-    const userContactNo = user.phone
+
+    // --- Save PENDING transaction BEFORE redirecting to Atom ---
+    // If the user closes the tab mid-payment, the reconciliation job will
+    // pick this up and query Atom's status API to settle it.
+    await PendingTransaction.create({
+      merchTxnId: txnId,
+      userId: user._id,
+      memtype,
+      amount
+    })
+    console.log(`[requestMembership] saved PENDING txn ${txnId} for user ${userId}`)
 
     const { error, atomTokenId, merchId } = await getAtomFromGateway(
       txnId,
       txnDate,
       amount,
-      userEmailId,
-      userContactNo,
+      user.email,
+      user.phone,
       user._id.toString(),
       {
         udf1: memtype,
@@ -286,13 +438,15 @@ const requestMembership = async (req, res) => {
       }
     )
     if (error) {
+      // Gateway rejected the request — mark FAILED immediately
+      await PendingTransaction.findOneAndUpdate(
+        { merchTxnId: txnId },
+        { $set: { status: 'FAILED', rawAtomResponse: { error } } }
+      )
       return res.status(500).json({ error })
     }
-    return res.status(200).json({
-      atomTokenId: atomTokenId,
-      txnId: txnId,
-      merchId: merchId
-    })
+
+    return res.status(200).json({ atomTokenId, txnId, merchId })
   } catch (error) {
     console.error('Error requesting membership:', error)
     res.status(500).json({ error: 'Internal Server Error' })
@@ -320,7 +474,7 @@ const checkMembership = async (req, res) => {
       return m.availQR <= 0
     })
 
-    for (m of invalidMemberships) {
+    for (const m of invalidMemberships) {
       m.isValid = false
       if (m.memtype !== 'filmFest') {
         m.availQR = 0
@@ -354,7 +508,7 @@ const suspendMembership = async (req, res) => {
     const userMemberships = await Membership.find({ user: userId })
     let membershipSuspended = false
 
-    for (membership of userMemberships) {
+    for (const membership of userMemberships) {
       let shouldSuspend = false
 
       // Check if membership should be suspended
@@ -437,7 +591,7 @@ module.exports = {
   assignBaseMembership,
   getMembershipPrices,
   setMembershipPrice,
-
   manualAdd,
-  createMembership
+  createMembership,
+  issueMembership
 }

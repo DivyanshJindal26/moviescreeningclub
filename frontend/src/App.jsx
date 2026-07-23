@@ -31,6 +31,7 @@ import MyAccount from '@/routes/MyAccount'
 import Showtime from '@/routes/Showtime'
 import TicketPrices from '@/routes/TicketPrices'
 import Tickets from '@/routes/Tickets'
+import AdminDashboard from '@/routes/AdminDashboard'
 import MovieList from '@/routes/VotePage'
 
 const Scanner = lazy(() => import('@/routes/Scanner'))
@@ -228,6 +229,14 @@ function App() {
                   element={
                     <AuthenticatedRoute minLevel="admin">
                       <ManageUsers />
+                    </AuthenticatedRoute>
+                  }
+                />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <AuthenticatedRoute minLevel="admin">
+                      <AdminDashboard />
                     </AuthenticatedRoute>
                   }
                 />

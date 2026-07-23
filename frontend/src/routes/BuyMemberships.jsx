@@ -58,7 +58,6 @@ const MembershipCard = ({ mem, loading, setLoading }) => {
       setLoading(false)
     }
   }
-  console.log(mem)
   return (
     <div
       disabled={loading}
@@ -153,18 +152,18 @@ const BuyMemberships = () => {
     return <Navigate to="/tickets" />
   }
 
-  if (!isMobile) {
-    return (
-      <div className="flex flex-col items-center justify-center p-8 font-monts text-center">
-        <h2 className="font-bn text-3xl font-bold mb-4">Mobile Only</h2>
-        <p className="text-lg text-gray-600 dark:text-gray-400">
-          Payments are only supported on mobile devices.
-          <br />
-          Please open this page on your phone to purchase a membership.
-        </p>
-      </div>
-    )
-  }
+  // if (!isMobile) {
+  //   return (
+  //     <div className="flex flex-col items-center justify-center p-8 font-monts text-center">
+  //       <h2 className="font-bn text-3xl font-bold mb-4">Mobile Only</h2>
+  //       <p className="text-lg text-gray-600 dark:text-gray-400">
+  //         Payments are only supported on mobile devices.
+  //         <br />
+  //         Please open this page on your phone to purchase a membership.
+  //       </p>
+  //     </div>
+  //   )
+  // }
 
   const colors = [
     'red',
@@ -203,7 +202,7 @@ const BuyMemberships = () => {
 
       <div className="grid grid-cols-1 items-center justify-items-center gap-4 pt-10 sm:grid-cols-2 2xl:grid-cols-4">
         {memberships.map((mem, index) => (
-          <MembershipCard mem={mem} loading={loading} setLoading={setLoading} />
+          <MembershipCard key={mem.name} mem={mem} loading={loading} setLoading={setLoading} />
         ))}
       </div>
     </div>

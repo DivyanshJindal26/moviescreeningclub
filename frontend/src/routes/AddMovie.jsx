@@ -10,7 +10,8 @@ const MovieForm = () => {
     releaseDate: '',
     genre: '',
     free: false,
-    currentscreening: true
+    currentscreening: true,
+    trailer: ''
   })
 
   const navigate = useNavigate()
@@ -42,11 +43,13 @@ const MovieForm = () => {
           description: '',
           releaseDate: '',
           genre: '',
-          currentscreening: true // Reset to default value
+          free: false,
+          currentscreening: true,
+          trailer: ''
         })
+        navigate('/home')
       })
       .catch((err) => console.error(err))
-    navigate('/home')
   }
 
   return (
@@ -169,6 +172,21 @@ const MovieForm = () => {
               <option value="Ongoing">Ongoing</option>
               <option value="Upcoming">Upcoming</option>
             </select>
+          </label>
+          <label
+            htmlFor="trailer"
+            className="form-label flex w-full flex-col justify-between"
+          >
+            Trailer URL (YouTube):
+            <input
+              type="text"
+              className="max-sm:w-full sm:min-w-[300px] rounded-lg border-none bg-neutral-100 dark:bg-[#141414] px-4 py-2 sm:max-w-[300px]"
+              placeholder="https://youtube.com/watch?v=..."
+              id="trailer"
+              name="trailer"
+              value={formData.trailer}
+              onChange={handleChange}
+            />
           </label>
           <button
             type="submit"

@@ -41,9 +41,10 @@ const Login = () => {
         login(res.data)
       }
     } catch (err) {
-      if (err.response.status === 404) {
+      const status = err?.response?.status
+      if (status === 404) {
         Swal.fire({ title: 'Error', text: 'User not found', icon: 'error' })
-      } else if (err.response.status === 401) {
+      } else if (status === 401) {
         Swal.fire({
           title: 'Error',
           text: 'Email or password is wrong',

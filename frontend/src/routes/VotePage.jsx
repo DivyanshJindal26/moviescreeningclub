@@ -8,8 +8,6 @@ import { useEffect, useState } from 'react'
 const MovieList = () => {
   const { user } = useLogin()
   const [movies, setMovies] = useState([])
-  const [userVotes, setUserVotes] = useState([])
-  const userType = localStorage.getItem('userType')
   const [newMovieData, setNewMovieData] = useState({
     title: '',
     poster: '',
@@ -53,7 +51,8 @@ const MovieList = () => {
     }
   }
 
-  const handleAddMovie = async () => {
+  const handleAddMovie = async (e) => {
+    e.preventDefault()
     try {
       const response = await api.post(`/vote/add`, newMovieData)
       if (response.status !== 201) {
@@ -102,6 +101,7 @@ const MovieList = () => {
         <div className="mt-2 flex items-center justify-between gap-2">
           <button
             onClick={() => handleVoteClick(movie._id, 'yes')}
+            disabled={movie.voted}
             className={`flex grow justify-center rounded-md bg-green-600 px-2 py-2 text-white ${
               movie.voted ? 'cursor-not-allowed opacity-50' : ''
             }`}
@@ -110,6 +110,7 @@ const MovieList = () => {
           </button>
           <button
             onClick={() => handleVoteClick(movie._id, 'no')}
+            disabled={movie.voted}
             className={`flex grow rotate-180 transform justify-center rounded-md bg-red-600 px-2 py-2 text-white ${
               movie.voted ? 'cursor-not-allowed opacity-50' : ''
             }`}

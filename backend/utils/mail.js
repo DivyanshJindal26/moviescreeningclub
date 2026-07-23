@@ -204,10 +204,48 @@ const mailFoodOrder = async (
   await transporter.sendMail(mailOptions)
 }
 
+const membershipFailureMail = async (email) => {
+  const mailOptions = {
+    from: process.env.EMAIL,
+    to: email,
+    subject: 'Payment verification failed — Chalchitra',
+    text:
+      'We were unable to verify your recent membership payment. ' +
+      'If money was debited from your account, please contact us with your transaction details.'
+  }
+  const transporter = transporterSingleton.getTransporter()
+  await transporter.sendMail(mailOptions)
+}
+
+const waitlistMail = async (email, name, movieTitle, seatsAvailable) => {
+  const mailOptions = {
+    from: process.env.EMAIL,
+    to: email,
+    subject: `Seats Available — ${movieTitle} | Chalchitra`,
+    html: `
+      <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+        <h2>Hi ${name},</h2>
+        <p>Seats are now available for <strong>${movieTitle}</strong>!</p>
+        <p>You requested ${seatsAvailable} seat(s) and they may be available now. Book quickly before they fill up again.</p>
+        <p style="margin-top: 20px;">
+          <a href="${process.env.FRONTEND_URL}/home" style="background: #E40C2B; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">
+            Book Now
+          </a>
+        </p>
+        <p style="color: #888; margin-top: 20px; font-size: 12px;">— Chalchitra, IIT Mandi</p>
+      </div>
+    `
+  }
+  const transporter = transporterSingleton.getTransporter()
+  await transporter.sendMail(mailOptions)
+}
+
 module.exports = {
   mailer: transporterSingleton.getTransporter(),
   mailQRs,
   membershipMail,
+  membershipFailureMail,
   mailOtp,
-  mailFoodOrder
+  mailFoodOrder,
+  waitlistMail
 }

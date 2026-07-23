@@ -14,7 +14,7 @@ const QRSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Membership',
     required: function () {
-      return !this.free
+      return !this.free && this.txnId !== 'BLOCK'
     }
   },
   showtime: {
@@ -33,6 +33,9 @@ const QRSchema = new mongoose.Schema({
     unique: true
   },
   OTP: {
+    type: String
+  },
+  label: {
     type: String
   },
   used: {

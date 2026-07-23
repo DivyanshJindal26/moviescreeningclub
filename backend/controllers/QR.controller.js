@@ -20,7 +20,7 @@ const getQRs = async (req, res) => {
       expired: [],
       cancelled: []
     }
-    for (qr of allQRs) {
+    for (const qr of allQRs) {
       if (qr.expirationDate > new Date()) {
         if (qr.used) {
           resQr.used.push({

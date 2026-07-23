@@ -14,7 +14,8 @@ const Tickets = () => {
   const [tickets, setTickets] = useState({
     used: [],
     unused: [],
-    expired: []
+    expired: [],
+    cancelled: []
   })
 
   const fetchTickets = async () => {
@@ -224,7 +225,7 @@ const Tickets = () => {
       )}
       {tickets.cancelled.length > 0 && (
         <div className="flex flex-col gap-6">
-          <p className="text-xl font-bold sm:text-2xl">cancelled Tickets</p>
+          <p className="text-xl font-bold sm:text-2xl">Cancelled Tickets</p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {tickets.cancelled.map((ticket) => (
               <div

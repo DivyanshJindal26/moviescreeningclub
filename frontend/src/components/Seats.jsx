@@ -4,10 +4,12 @@ const Seat = ({ seat, selected, onclick }) => {
     <button
       className={`bg-white-50 font-roboto m-0.5 w-8 cursor-pointer border border-gray-400 px-1 py-1 text-center text-[8px] ${
         selected
-          ? 'bg-green-600 '
-          : seat.occupied
-            ? 'bg-gray-300 text-red-400'
-            : ''
+          ? 'bg-green-600'
+          : seat.type === 'blocked'
+            ? 'bg-yellow-400 text-black'
+            : seat.occupied
+              ? 'bg-gray-300 text-red-400'
+              : ''
       }`}
       onClick={() => onclick(seat.name)}
       disabled={seat.occupied}

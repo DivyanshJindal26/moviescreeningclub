@@ -39,7 +39,7 @@ const signup = async (req, res) => {
     } catch (error) {
       return res.status(500).json({
         success: false,
-        message: `Hashing password error for ${password}: ` + error.message
+        message: 'Error processing password'
       })
     }
     const newUser = await User.create({
@@ -86,7 +86,7 @@ const login = async (req, res) => {
     )
     res.cookie('token', token, {
       httpOnly: true,
-      // secure: process.env.NODE_ENV === 'production',
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'Lax',
       maxAge: 24 * 60 * 60 * 1000
     })
@@ -107,7 +107,6 @@ const login = async (req, res) => {
 const update = async (req, res) => {
   try {
     const { email, password, otp } = req.body
-    console.log(req.body)
     if (!email || !password || !otp) {
       console.log('input error')
       return res.status(403).json({
@@ -133,7 +132,7 @@ const update = async (req, res) => {
       console.log('password error')
       return res.status(500).json({
         success: false,
-        message: `Hashing password error for ${password}: ` + error.message
+        message: 'Error processing password'
       })
     }
 

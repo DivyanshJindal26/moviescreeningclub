@@ -1,7 +1,6 @@
 import { Loading } from '@/components/icons/Loading'
 import { api } from '@/utils/api'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import Swal from 'sweetalert2'
 
 const MovieForm = () => {
@@ -9,12 +8,11 @@ const MovieForm = () => {
     userEmail: '',
     txnId: '',
     membershipType: '',
-    amount: ''
+    amount: '',
+    passes: ''
   })
   const [loading, setLoading] = useState(false)
   const [membershipOptions, setMembershipOptions] = useState([])
-
-  const navigate = useNavigate()
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -30,7 +28,8 @@ const MovieForm = () => {
         setFormData((prev) => ({
           ...prev,
           membershipType: '',
-          amount: ''
+          amount: '',
+          passes: ''
         }))
       })
       .catch((err) => {
@@ -44,12 +43,14 @@ const MovieForm = () => {
 
   const handleMembershipChange = (e) => {
     const selectedMembership = e.target.value
+    const selectedOption = membershipOptions.find(
+      (m) => m.membershipName === selectedMembership
+    )
     setFormData((prev) => ({
       ...prev,
       membershipType: selectedMembership,
-      amount:
-        membershipOptions.find((m) => m.membershipName === selectedMembership)
-          ?.price || ''
+      amount: selectedOption?.price || '',
+      passes: selectedOption?.passes || ''
     }))
   }
 
@@ -63,9 +64,10 @@ const MovieForm = () => {
           userEmail: '',
           txnId: '',
           membershipType: '',
-          amount: ''
+          amount: '',
+          passes: ''
         })
-        navigate('/home')
+        setMembershipOptions([])
       })
       .catch((err) => {
         console.log(err)
@@ -99,6 +101,12 @@ const MovieForm = () => {
             name="userEmail"
             value={formData.userEmail}
             onChange={handleChange}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !membershipOptions.length) {
+                e.preventDefault()
+                handleVerify()
+              }
+            }}
             required
             className="w-full rounded-lg bg-neutral-100 dark:bg-[#141414] px-4 py-2"
           />
@@ -144,6 +152,16 @@ const MovieForm = () => {
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="w-full">
+              Number of passes:
+              <input
+                type="text"
+                name="passes"
+                value={formData.passes}
+                onChange={handleChange}
+                className="w-full rounded-lg bg-neutral-200 dark:bg-[#141414] px-4 py-2"
+              />
             </label>
             <label className="w-full">
               Amount:

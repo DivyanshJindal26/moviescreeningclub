@@ -52,8 +52,16 @@ const getMovies = async (req, res) => {
 
 const updateMovie = async (req, res) => {
   const { id } = req.params
+  const allowedFields = [
+    'title', 'poster', 'description', 'releaseDate', 'genre',
+    'currentscreening', 'past', 'trailer', 'free'
+  ]
+  const update = {}
+  for (const key of allowedFields) {
+    if (req.body[key] !== undefined) update[key] = req.body[key]
+  }
   try {
-    const updatedMovie = await Movie.findByIdAndUpdate(id, req.body, {
+    const updatedMovie = await Movie.findByIdAndUpdate(id, update, {
       new: true
     })
     res.json(updatedMovie)

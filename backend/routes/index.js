@@ -12,6 +12,9 @@ const qrRouter = require('@/routes/qr.route')
 const metricsRouter = require('@/routes/metrics.route')
 const orderRouter = require('@/routes/food/order.route')
 const foodRouter = require('@/routes/food/food.route')
+const tempRouter = require('@/routes/temp.route')
+const adminRouter = require('@/routes/admin.route')
+const waitlistRouter = require('@/routes/waitlist.route')
 
 router.use('/user', userRouter)
 router.use('/auth', authRouter)
@@ -25,5 +28,8 @@ router.use('/vote', votepagerouter)
 router.use('/metrics', metricsRouter)
 router.use('/order', orderRouter)
 router.use('/food', foodRouter)
+router.use('/temp', tempRouter)
+router.use('/admin', adminRouter)
+router.use('/waitlist', waitlistRouter)
 
 module.exports = router

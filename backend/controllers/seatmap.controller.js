@@ -20,7 +20,7 @@ const seatOccupancy = async (req, res) => {
       return res.status(400).json({ error: 'Invalid showtime' })
     }
     const resSeats = []
-    for ([seat, qr] of Object(seatMap.seats).entries()) {
+    for (const [seat, qr] of Object(seatMap.seats).entries()) {
       const row = rows.find((row) => seat.includes(row.prefix))
       const adder =
         ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'].indexOf(row.prefix) === -1
@@ -29,6 +29,7 @@ const seatOccupancy = async (req, res) => {
 
       resSeats.push({
         occupied: !!qr,
+        type: qr?.txnId === 'BLOCK' ? 'blocked' : 'booked',
         name: seat,
         sec:
           (parseInt(seat.slice(1)) > row.center + row.right
@@ -111,7 +112,7 @@ const seatAssign = async (req, res) => {
     const isFilmFestPass =
       currentMembership && currentMembership.memtype === 'filmFest'
 
-    for (seat of seats) {
+    for (const seat of seats) {
       if (!seatMap.seats.has(seat)) {
         return res.status(400).json({ error: 'Invalid seat(s)' })
       }
@@ -310,4 +311,88 @@ const seatAssign = async (req, res) => {
   }
 }
 
-module.exports = { seatOccupancy, seatAssign, freepasses, getMails }
+const blockSeat = async (req, res) => {
+  try {
+    const { showtimeId } = req.params
+    const { seats, name } = req.body
+
+    if (!Array.isArray(seats) || seats.length === 0) {
+      return res.status(400).json({ error: 'No seats provided' })
+    }
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'No name provided' })
+    }
+
+    const seatMap = await SeatMap.findOne({ showtimeId: showtimeId })
+    if (!seatMap) {
+      return res.status(400).json({ error: 'Invalid showtime' })
+    }
+
+    const movie = await Movie.findOne({ 'showtimes._id': showtimeId })
+    if (!movie || movie.past) {
+      return res.status(400).json({ error: 'Invalid showtime' })
+    }
+
+    const showtime = movie.showtimes.id(showtimeId)
+    if (!showtime) {
+      return res.status(400).json({ error: 'Invalid showtime' })
+    }
+
+    if (new Date(showtime.date) < new Date(Date.now() - 3 * 60 * 60 * 1000)) {
+      return res.status(400).json({ error: 'Invalid showtime' })
+    }
+
+    for (let seat of seats) {
+      if (!seatMap.seats.has(seat)) {
+        return res.status(400).json({ error: `Invalid seat: ${seat}` })
+      }
+      if (seatMap.seats.get(seat)) {
+        return res.status(400).json({ error: `Seat already assigned: ${seat}` })
+      }
+    }
+
+    const blockedSeats = []
+    for (let seat of seats) {
+      const qr = new QR({
+        user: req.user.userId,
+        free: false,
+        membership: null,
+        txnId: 'BLOCK',
+        showtime: showtimeId,
+        seat: seat,
+        code: '',
+        expirationDate: new Date(
+          new Date(showtime.date).getTime() + 3 * 60 * 60 * 1000
+        ),
+        label: name
+      })
+      const code = jwt.sign(
+        {
+          userId: req.user.userId,
+          qrId: qr._id,
+          seat: seat,
+          hash: crypto.randomBytes(16).toString('hex')
+        },
+        process.env.JWT_SECRET_QR || 'lolbhai'
+      )
+      qr.code = code
+      await qr.save()
+      await SeatMap.findOneAndUpdate(
+        {
+          _id: seatMap._id,
+          [`seats.${seat}`]: null
+        },
+        { $set: { [`seats.${seat}`]: qr._id } },
+        { new: true }
+      )
+      blockedSeats.push(seat)
+    }
+
+    return res.json({ message: 'Seats blocked', seats: blockedSeats })
+  } catch (error) {
+    console.error('Error blocking seats:', error)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+}
+
+module.exports = { seatOccupancy, seatAssign, freepasses, getMails, blockSeat }
