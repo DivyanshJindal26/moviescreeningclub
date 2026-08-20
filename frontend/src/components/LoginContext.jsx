@@ -14,7 +14,7 @@ export const LoginProvider = ({ children }) => {
       const token = JSON.parse(localStorage.getItem('token'))
       if (token) {
         const currentTime = Date.now() / 1000
-        if (token.exp < currentTime) {
+        if (token.exp + 2 * 60 < currentTime) {
           localStorage.removeItem('token')
           setLoggedIn(false)
         } else {

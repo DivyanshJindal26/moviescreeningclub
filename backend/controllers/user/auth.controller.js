@@ -49,16 +49,14 @@ const signup = async (req, res) => {
       password: hashedPassword,
       designation: getUserType(email) || 'other'
     })
-    const userResponse = newUser.toObject()
-    delete userResponse.password
     return res.status(201).json({
       success: true,
       message: 'User registered successfully',
-      user: userResponse
+      user: newUser
     })
   } catch (error) {
     console.log(error.message)
-    return res.status(500).json({ success: false, error: 'Internal server error' })
+    return res.status(500).json({ success: false, error: error.message })
   }
 }
 

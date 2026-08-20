@@ -37,7 +37,7 @@ const FoodVerify = () => {
       }
     } catch (error) {
       console.error('Error verifying OTP:', error)
-      const err = error.response?.data?.error
+      const err = error.response.data.error
       Swal.fire({
         title: 'Error!',
         text: typeof err === 'string' ? err : 'Failed to verify OTP.',

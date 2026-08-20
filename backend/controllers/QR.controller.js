@@ -4,7 +4,7 @@ const QR = require('@/models/qr.model')
 const Movie = require('@/models/movie.model')
 const SeatMap = require('@/models/seatmap.model')
 const Membership = require('@/models/membership.model')
-const MemPrice = require('@/models/membershipprice.model')
+const memData = require('@constants/memberships.json')
 const mongoose = require('mongoose')
 
 const getQRs = async (req, res) => {
@@ -73,7 +73,7 @@ const getQRs = async (req, res) => {
           seat: qr.seat,
           used: qr.used
         })
-        await qr.save()
+        qr.save()
       }
     }
 
@@ -147,10 +147,12 @@ const cancelQr = async (req, res) => {
         } else {
           hasMembership.availQR += 1
         }
+        hasMembership.validitydate = new Date(
+          Date.now() + hasMembership.validity * 1000
+        )
         await hasMembership.save({ session })
       } else {
-        const baseMem = await MemPrice.findOne({ name: 'base' })
-        const { validity } = baseMem
+        const { validity } = memData.find((m) => m.name === 'base')
         const assignMembership = new Membership({
           user: req.user.userId,
           memtype: 'base',
@@ -215,7 +217,7 @@ const check = async (req, res) => {
     }
     if (qr.expirationDate < new Date()) {
       qr.isValid = false
-      await qr.save()
+      qr.save()
       return res.json({
         exists: true,
         validityPassed: true,

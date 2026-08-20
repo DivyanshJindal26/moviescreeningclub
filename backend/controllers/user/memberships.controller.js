@@ -8,7 +8,8 @@ const { getAmount } = require('@/utils/membership')
 const {
   getAtomFromGateway,
   decrypt,
-  generateSignature
+  generateSignature,
+  queryAtomTransactionStatus
 } = require('@/utils/payment')
 require('dotenv').config()
 
@@ -99,7 +100,7 @@ const setMembershipPrice = async (req, res) => {
     if (passType) {
       updateData.passType = passType
     }
-    if (movieCount != null) {
+    if (movieCount) {
       updateData.movieCount = movieCount
     }
 
@@ -118,17 +119,20 @@ const setMembershipPrice = async (req, res) => {
 
 // POST /api/membership/redirect — Atom's returnUrl handler.
 //
-// Strategy: decrypt the redirect payload and verify its HMAC signature.
-// If the signature is valid and statusCode is OTS0000, the payment succeeded.
-// The redirect payload is encrypted with our merchant keys and signed with
-// HMAC-SHA512, so a valid signature proves it came from Atom untampered.
+// Strategy: decrypt the redirect payload to get the txnId, then ALWAYS
+// confirm via queryAtomTransactionStatus() before issuing anything.
+// We never trust the redirect payload alone — it can be dropped, replayed,
+// or tampered with. The status API is ground truth.
 //
 // Idempotency: we atomically transition PendingTransaction PENDING → COMPLETED
 // using findOneAndUpdate with a PENDING filter. If the transition returns null,
-// a parallel process already handled it — we skip issuance and redirect.
+// a parallel process (another redirect hit or the reconciliation job) already
+// handled it — we skip issuance and redirect to success.
 const saveMembership = async (req, res) => {
   let txnId
   try {
+    // Step 1: Decrypt redirect payload to identify the transaction.
+    // If decryption fails we can't identify the txn — surface an error.
     let jsonData
     try {
       jsonData = JSON.parse(decrypt(req.body.encData))
@@ -137,15 +141,24 @@ const saveMembership = async (req, res) => {
       return res.redirect(`${process.env.FRONTEND_URL}/home?err=decrypt_failed`)
     }
 
-    const instrument = jsonData.payInstrument || jsonData
-    txnId = instrument.merchDetails?.merchTxnId
+    txnId = jsonData.payInstrument?.merchDetails?.merchTxnId
     if (!txnId) {
       console.error('[saveMembership] no txnId in decrypted payload')
       return res.redirect(`${process.env.FRONTEND_URL}/home?err=missing_txn_id`)
     }
 
+    // Step 2: Signature check — log mismatches but do NOT bail out yet.
+    // We still call the status API because the payment may be legitimate even
+    // if the redirect payload was somehow corrupted in transit.
+    const signature = generateSignature(jsonData.payInstrument)
+    if (signature !== jsonData.payInstrument?.payDetails?.signature) {
+      console.warn(`[saveMembership] signature mismatch for txn ${txnId} — will still confirm via status API`)
+    }
+
+    // Step 3: Check if we've already handled this transaction (idempotent re-hits).
     const existingTxn = await PendingTransaction.findOne({ merchTxnId: txnId })
     if (!existingTxn) {
+      // This shouldn't happen in normal flow — log and error out.
       console.error(`[saveMembership] no PendingTransaction found for txnId ${txnId}`)
       return res.redirect(`${process.env.FRONTEND_URL}/home?err=unknown_transaction`)
     }
@@ -159,45 +172,47 @@ const saveMembership = async (req, res) => {
       return res.redirect(`${process.env.FRONTEND_URL}/home?err=payment_under_review`)
     }
 
-    const signature = generateSignature(instrument)
-    const payloadSig = instrument.payDetails?.signature
-    if (signature !== payloadSig) {
-      console.error(`[saveMembership] HMAC signature mismatch for txn ${txnId} — flagging MANUAL_REVIEW`)
-      await PendingTransaction.findOneAndUpdate(
-        { merchTxnId: txnId, status: 'PENDING' },
-        {
-          $set: {
-            status: 'MANUAL_REVIEW',
-            rawAtomResponse: jsonData,
-            lastReconciliationAt: new Date()
-          },
-          $inc: { reconciliationAttempts: 1 }
-        }
+    // Step 4: Confirm with Atom's status API (server-to-server).
+    const txnDate = existingTxn.createdAt
+      .toISOString()
+      .replace(/T/, ' ')
+      .replace(/\..+/, '')
+
+    let atomStatus
+    try {
+      atomStatus = await queryAtomTransactionStatus(
+        txnId,
+        existingTxn.amount,
+        txnDate
       )
-      return res.redirect(`${process.env.FRONTEND_URL}/home?err=payment_under_review`)
+    } catch (statusErr) {
+      // Network or decryption error — keep PENDING, reconciliation job will retry.
+      console.error(`[saveMembership] status API error for txn ${txnId}:`, statusErr.message)
+      return res.redirect(`${process.env.FRONTEND_URL}/home?err=payment_confirming`)
     }
 
-    const statusCode = instrument.responseDetails?.statusCode
-    console.log(`[saveMembership] txn ${txnId} statusCode=${statusCode}, signature valid`)
+    console.log(`[saveMembership] Atom status for txn ${txnId}:`, atomStatus)
 
-    if (statusCode === 'OTS0000') {
-      const atomTxnId = instrument.payDetails?.atomTxnId
+    if (atomStatus.f_code === 'Ok') {
+      // Step 5a: Atomically claim the transaction — prevents duplicate issuance
+      // if the reconciliation job fires at the exact same moment.
       const claimed = await PendingTransaction.findOneAndUpdate(
         { merchTxnId: txnId, status: 'PENDING' },
         {
           $set: {
             status: 'COMPLETED',
-            atomTxnId,
-            rawAtomResponse: jsonData,
+            atomTxnId: atomStatus.mmp_txn,
+            rawAtomResponse: atomStatus,
             lastReconciliationAt: new Date()
           },
           $inc: { reconciliationAttempts: 1 }
         },
-        { new: false }
+        { new: false } // return the OLD document — null means already processed
       )
 
       if (!claimed) {
-        console.log(`[saveMembership] txn ${txnId} already claimed, skipping`)
+        // Another process beat us to it — membership already issued.
+        console.log(`[saveMembership] txn ${txnId} already claimed, skipping duplicate issuance`)
         return res.redirect(`${process.env.FRONTEND_URL}/home?success_payment=true`)
       }
 
@@ -211,13 +226,19 @@ const saveMembership = async (req, res) => {
       })
       return res.redirect(`${process.env.FRONTEND_URL}/home?success_payment=true`)
 
+    } else if (atomStatus.error) {
+      // Status API itself errored (network/encryption issue) — keep PENDING.
+      console.warn(`[saveMembership] status API returned error for txn ${txnId}:`, atomStatus.error)
+      return res.redirect(`${process.env.FRONTEND_URL}/home?err=payment_confirming`)
+
     } else {
+      // Atom confirmed payment failed or is unambiguously not Ok.
       await PendingTransaction.findOneAndUpdate(
         { merchTxnId: txnId, status: 'PENDING' },
         {
           $set: {
             status: 'FAILED',
-            rawAtomResponse: jsonData,
+            rawAtomResponse: atomStatus,
             lastReconciliationAt: new Date()
           },
           $inc: { reconciliationAttempts: 1 }
@@ -233,6 +254,7 @@ const saveMembership = async (req, res) => {
     }
   } catch (error) {
     console.error(`[saveMembership] unexpected error for txn ${txnId}:`, error)
+    // Do NOT mark as FAILED on unexpected errors — keep PENDING for reconciliation.
     return res.redirect(`${process.env.FRONTEND_URL}/home?err=internal_server_error`)
   }
 }
@@ -246,9 +268,7 @@ const manualAdd = async (req, res) => {
       return res.status(404).json({ error: 'User not found' })
     }
     const memData = await MemPrice.find()
-    const memDetails = memData.find(
-      (m) => m.name === membershipType || m.passType === membershipType
-    )
+    const memDetails = memData.find((m) => m.name === membershipType)
     if (!memDetails) {
       return res.status(400).json({ error: 'Invalid membership type' })
     }
@@ -272,14 +292,12 @@ const manualAdd = async (req, res) => {
       gold: 'gold',
       diamond: 'diamond',
       'Film Fest': 'filmFest',
-      'Film Fest Pass': 'filmFest',
-      'Foodie Film Fest': 'filmFest',
-      filmFest: 'filmFest'
+      'Foodie Film Fest': 'filmFest'
     }
 
     const memtype =
       memtypeMapping[membershipType] ||
-      (memDetails.passType === 'filmFest' ? 'filmFest' : membershipType)
+      membershipType.toLowerCase().replace(/\s+/g, '')
 
     const membershipData = {
       user: user._id,
@@ -327,25 +345,8 @@ const assignBaseMembership = async (req, res) => {
 
     const { validity, availQR } = baseMembership
 
-    const existingMemberships = await Membership.find({
-      user: { $in: coreTeamUsers.map((u) => u._id) },
-      isValid: true
-    })
-    const usersWithMembership = new Set(
-      existingMemberships.map((m) => m.user.toString())
-    )
-    const eligibleUsers = coreTeamUsers.filter(
-      (u) => !usersWithMembership.has(u._id.toString())
-    )
-
-    if (eligibleUsers.length === 0) {
-      return res
-        .status(200)
-        .json({ message: 'All core team users already have valid memberships' })
-    }
-
     const newMemberships = await Promise.all(
-      eligibleUsers.map(async (user) => ({
+      coreTeamUsers.map(async (user) => ({
         user: user._id,
         memtype: 'base',
         txnId: 'coreteam',
@@ -573,7 +574,7 @@ const createMembership = async (req, res) => {
     if (passType) {
       membershipData.passType = passType
     }
-    if (movieCount != null) {
+    if (movieCount) {
       membershipData.movieCount = movieCount
     }
 

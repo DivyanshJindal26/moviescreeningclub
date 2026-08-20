@@ -1,6 +1,5 @@
 const Queue = require('bull')
 const Order = require('@/models/food/order.model')
-const Food = require('@/models/food/food.model')
 const paymentTimeoutQueue = new Queue('food-payment-timeout')
 paymentTimeoutQueue.process(async (job) => {
   const { orderId } = job.data

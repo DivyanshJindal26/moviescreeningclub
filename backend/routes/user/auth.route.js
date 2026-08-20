@@ -12,6 +12,6 @@ const authLimiter = rateLimit({
 })
 
 router.post('/login', authLimiter, login)
-router.post('/update', authLimiter, update)
+router.post('/update', update)
 router.post('/signup', authLimiter, signup)
 module.exports = router

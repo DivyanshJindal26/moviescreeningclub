@@ -36,14 +36,6 @@ const sendOTPforgot = async (req, res) => {
   try {
     const { email } = req.body
 
-    const user = await User.findOne({ email: email.toLowerCase() })
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'No account found with this email'
-      })
-    }
-
     const otp = otpGenerator.generate(6, {
       upperCaseAlphabets: false,
       lowerCaseAlphabets: false,

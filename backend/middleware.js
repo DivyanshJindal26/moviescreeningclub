@@ -16,12 +16,8 @@ const allowedLvl = (level) => {
   return ['admin', 'volunteer', 'movievolunteer', 'ticketvolunteer', 'standard']
 }
 
-const isAllowedLvl = (minLevel, userType) => {
-  if (Array.isArray(minLevel)) {
-    return minLevel.some((level) => allowedLvl(level).includes(userType))
-  }
-  return allowedLvl(minLevel).includes(userType)
-}
+const isAllowedLvl = (minLevel, userType) =>
+  allowedLvl(minLevel).includes(userType)
 
 const verifyJWTWithRole = (minRole = 'standard') => {
   return (req, res, next) => {

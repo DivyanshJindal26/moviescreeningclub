@@ -27,13 +27,13 @@ export default function ForgotPassword() {
         navigate('/update', { state: { email: formData.email } })
       }
     } catch (err) {
-      if (err.response?.status === 401) {
+      if (err.response.status === 401) {
         Swal.fire({
           title: 'Error',
           text: 'User does not exist please sign up',
           icon: 'error'
         })
-      } else if (err.response?.status === 500) {
+      } else if (err.response.status === 500) {
         Swal.fire({
           title: 'Error',
           text: 'Internal server error',

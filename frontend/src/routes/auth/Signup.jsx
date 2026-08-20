@@ -28,7 +28,7 @@ export const Signup = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setIsSubmitting(true)
-    if (!checkEmail(formData.email)) {
+    if (!checkEmail(email)) {
       Swal.fire({
         title: 'Error',
         text: 'Please enter a valid college email ID.',

@@ -12,7 +12,7 @@ const Seat = ({ seat, selected, onclick }) => {
               : ''
       }`}
       onClick={() => onclick(seat.name)}
-      disabled={seat.occupied || seat.type === 'blocked'}
+      disabled={seat.occupied}
     >
       {seat.name}
     </button>

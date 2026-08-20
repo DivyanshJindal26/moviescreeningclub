@@ -43,7 +43,7 @@ const AdminFood = () => {
     if (editingId) {
       try {
         const response = await api.put(`/food/${editingId}`, newFoodItem)
-        if (response.status !== 200) {
+        if (!response.ok) {
           Swal.fire({
             title: 'Error',
             text: 'Failed to update food item',
@@ -64,7 +64,7 @@ const AdminFood = () => {
     } else {
       try {
         const response = await api.post('/food', newFoodItem)
-        if (response.status !== 200) {
+        if (!response.ok) {
           Swal.fire({
             title: 'Error',
             text: 'Failed to add food item',
@@ -112,7 +112,7 @@ const AdminFood = () => {
   const handleDelete = async (id) => {
     try {
       const response = await api.delete(`/food/${id}`)
-      if (response.status !== 200) {
+      if (!response.ok) {
         Swal.fire({
           title: 'Error',
           text: 'Failed to delete food item',
