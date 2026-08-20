@@ -49,7 +49,9 @@ const issueMembership = async ({ userId, memtype, txnId, amount, email }) => {
   }
 
   const memData = await MemPrice.find()
-  const memDetails = memData.find((m) => m.name === memtype)
+  const memDetails = memData.find(
+    (m) => m.name === memtype || m.passType === memtype
+  )
   if (!memDetails) throw new Error(`Unknown memtype: ${memtype}`)
 
   const { validity, availQR, passType, movieCount } = memDetails
@@ -371,7 +373,10 @@ const requestMembership = async (req, res) => {
     const { userId } = req.user
     const { memtype } = req.body
     const memData = await MemPrice.find()
-    if (!memtype || memData.map((m) => m.name).indexOf(memtype) === -1) {
+    const validMem = memData.find(
+      (m) => m.name === memtype || m.passType === memtype
+    )
+    if (!memtype || !validMem) {
       return res.status(400).json({ message: 'Membership type is required' })
     }
     const user = await User.findById(userId)
