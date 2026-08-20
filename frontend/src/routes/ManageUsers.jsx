@@ -184,7 +184,7 @@ const ManageUsers = () => {
     }
     setLoading(true)
     try {
-      await api.delete(`/user/membership/${membershipId}`)
+      await api.post(`/user/membership/delete/${membershipId}`)
       toast('Membership deleted successfully!')
       await fetchUserDetails(selectedUser)
     } catch (error) {
@@ -201,7 +201,7 @@ const ManageUsers = () => {
     }
     setLoading(true)
     try {
-      await api.delete(`/user/qr/${qrId}`)
+      await api.post(`/user/qr/delete/${qrId}`)
       toast('QR code deleted successfully!')
       await fetchUserDetails(selectedUser)
     } catch (error) {

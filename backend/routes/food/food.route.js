@@ -13,6 +13,6 @@ router.get('/', getFoodItems)
 router.get('/show/:showTimeId', getFoodItemsByShowTime)
 router.post('/', verifyJWTWithRole('admin'), createFoodItem)
 router.post('/update/:id', verifyJWTWithRole('admin'), updateFoodItem)
-router.delete('/:id', verifyJWTWithRole('admin'), deleteFoodItem)
+router.post('/delete/:id', verifyJWTWithRole('admin'), deleteFoodItem)
 
 module.exports = router

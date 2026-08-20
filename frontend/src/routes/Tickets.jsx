@@ -50,7 +50,7 @@ const Tickets = () => {
       showCancelButton: true
     }).then(async (result) => {
       if (result.isConfirmed) {
-        const res = await api.delete(`/qr/${ticket.id}`)
+        const res = await api.post(`/qr/cancel/${ticket.id}`)
         if (res.status === 200) {
           fetchTickets()
           checkMembershipStatus()

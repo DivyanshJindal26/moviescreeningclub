@@ -23,13 +23,13 @@ router.post(
   verifyJWTWithRole('admin'),
   updateMembership
 )
-router.delete(
-  '/membership/:membershipId',
+router.post(
+  '/membership/delete/:membershipId',
   verifyJWTWithRole('admin'),
   deleteMembership
 )
 router.post('/qr/:qrId', verifyJWTWithRole('admin'), updateQRCode)
-router.delete('/qr/:qrId', verifyJWTWithRole('admin'), deleteQRCode)
+router.post('/qr/delete/:qrId', verifyJWTWithRole('admin'), deleteQRCode)
 router.get('/:email', verifyJWTWithRole(), userType)
 router.get('/membershipdata/:email', verifyJWTWithRole(), userMembershipData)
 module.exports = router

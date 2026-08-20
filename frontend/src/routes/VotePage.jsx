@@ -71,7 +71,7 @@ const MovieList = () => {
 
   const handleDeleteMovie = async (movieId) => {
     try {
-      const response = await api.delete(`/vote/delete/${movieId}`)
+      const response = await api.post(`/vote/delete/${movieId}`)
       if (response.status !== 200) {
         throw new Error('Failed to delete movie')
       }

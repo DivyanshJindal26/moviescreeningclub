@@ -6,5 +6,5 @@ const router = express.Router()
 
 router.post('/check', verifyJWTWithRole('ticketvolunteer'), check)
 router.get('/', verifyJWTWithRole(), getQRs)
-router.delete('/:id', verifyJWTWithRole(), cancelQr)
+router.post('/cancel/:id', verifyJWTWithRole(), cancelQr)
 module.exports = router

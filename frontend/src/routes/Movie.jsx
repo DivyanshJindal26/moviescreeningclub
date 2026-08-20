@@ -104,7 +104,7 @@ const Movie = () => {
     if (!showtime) return
     setWaitlistLoading(true)
     try {
-      await api.delete(`/waitlist/leave/${showtime}`)
+      await api.post(`/waitlist/leave/${showtime}`)
       setWaitlistStatus({ onWaitlist: false })
     } catch (err) {
       Swal.fire({

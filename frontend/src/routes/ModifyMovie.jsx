@@ -61,7 +61,7 @@ const ModifyMovie = () => {
 
   const handleDelete = async (id) => {
     try {
-      await api.delete(`/movie/${id}`)
+      await api.post(`/movie/delete/${id}`)
       setMovies((prevMovies) => prevMovies.filter((movie) => movie._id !== id))
     } catch (error) {
       console.error('Error deleting movie:', error)

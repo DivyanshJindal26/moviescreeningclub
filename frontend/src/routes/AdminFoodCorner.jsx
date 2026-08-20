@@ -111,7 +111,7 @@ const AdminFood = () => {
 
   const handleDelete = async (id) => {
     try {
-      const response = await api.delete(`/food/${id}`)
+      const response = await api.post(`/food/delete/${id}`)
       if (!response.ok) {
         Swal.fire({
           title: 'Error',

@@ -12,7 +12,7 @@ router.get('/movies', getAllMovies)
 
 router.post('/', verifyJWTWithRole(), voteMovie)
 router.post('/add', verifyJWTWithRole('movievolunteer'), addVoteMovie)
-router.delete(
+router.post(
   '/delete/:id',
   verifyJWTWithRole('movievolunteer'),
   deleteVoteMovie
