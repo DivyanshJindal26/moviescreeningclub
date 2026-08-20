@@ -3,11 +3,12 @@ require('module-alias/register')
 const { config } = require('dotenv')
 config({ path: './.env' })
 
+const fs = require('fs')
 const express = require('express')
 const mongoose = require('mongoose')
 const bodyParser = require('body-parser')
 const cors = require('cors')
-const { createServer } = require('http')
+const { createServer } = require('https')
 const path = require('path')
 const cookieParser = require('cookie-parser')
 
@@ -19,7 +20,14 @@ require('@/utils/reconciliation')
 const PORT = process.env.PORT ?? 8000
 
 const app = express()
-const https = createServer(app)
+
+const sslOptions = {
+  cert: fs.readFileSync(process.env.SSL_CERT_PATH),
+  key: fs.readFileSync(process.env.SSL_KEY_PATH),
+  ca: process.env.SSL_CA_PATH ? fs.readFileSync(process.env.SSL_CA_PATH) : undefined
+}
+
+const server = createServer(sslOptions, app)
 
 mongoose
   .connect(`${process.env.MongoDB}`, { family: 4 })
@@ -75,6 +83,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' })
 })
 
-https.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT} (HTTPS)`)
 })
