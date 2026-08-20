@@ -34,27 +34,7 @@ mongoose
   .then(() => console.log('Connected to MongoDB'))
   .catch((error) => console.error('MongoDB connection error:', error))
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (process.env.NODE_ENV !== 'production') {
-      callback(null, true)
-    } else {
-      const allowedOrigins = [
-        'https://chalchitra.iitmandi.ac.in',
-        process.env.FRONTEND_URL
-      ].filter(Boolean)
-      if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true)
-      } else {
-        callback(new Error('Not allowed by CORS'))
-      }
-    }
-  },
-  credentials: true,
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-  allowedHeaders: 'Content-Type, Authorization'
-}
-app.use(cors(corsOptions))
+app.use(cors({ origin: true, credentials: true }))
 // DONT REMOVE THIS 2 LINES ITS REQUIRED BY NT DATA PAY
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: true }))
