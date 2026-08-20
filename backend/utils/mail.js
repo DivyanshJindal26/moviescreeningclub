@@ -7,13 +7,20 @@ const transporterSingleton = (() => {
   return {
     getTransporter: function () {
       if (!transporterInstance) {
-        transporterInstance = nodemailer.createTransport({
-          service: 'gmail',
+        const config = {
           auth: {
             user: process.env.EMAIL,
             pass: process.env.PASSWORD
           }
-        })
+        }
+        if (process.env.SMTP_HOST) {
+          config.host = process.env.SMTP_HOST
+          config.port = parseInt(process.env.SMTP_PORT, 10) || 587
+          config.secure = process.env.SMTP_SECURE === 'true'
+        } else {
+          config.service = 'gmail'
+        }
+        transporterInstance = nodemailer.createTransport(config)
       }
       return transporterInstance
     }
@@ -187,16 +194,16 @@ const mailFoodOrder = async (
         <p>Order Successful</p>
         <p>Otp: ${otp}</p>
         <p>Items:</p>
-        <ul className="space-y-2">
+        <ul style="list-style: none; padding: 0;">
           ${items.map(
             (item) =>
-              `<li className="text-gray-800 dark:text-gray-400">
+              `<li style="padding: 4px 0; color: #333;">
               ${item.name} (Vendor: ${item.vendor}) - ${item.quantity} x Rs.
               ${item.price} = Rs. ${item.price * item.quantity}
             </li>`
-          )}
+          ).join('')}
         </ul>
-        <p className="text-right text-xl font-semibold mt-4">
+        <p style="text-align: right; font-size: 18px; font-weight: 600; margin-top: 16px;">
           Total Price: Rs. ${items.reduce((total, item) => total + item.price * item.quantity, 0)}
         </p>`
   }
