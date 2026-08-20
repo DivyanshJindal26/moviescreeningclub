@@ -9,13 +9,11 @@ const fetchUsers = async (req, res) => {
     let query = {}
 
     // Check if role filter is provided in query parameters
-    if (req.query.role) {
-      // If role filter is provided, construct the query to filter users by role
+    if (req.query.role && typeof req.query.role === 'string') {
       query = { usertype: req.query.role }
     }
 
-    // Fetch users based on the constructed query
-    const users = await User.find(query)
+    const users = await User.find(query).select('-password')
 
     res.json({ users })
   } catch (error) {

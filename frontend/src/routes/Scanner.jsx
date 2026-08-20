@@ -7,10 +7,12 @@ export const Scanner = () => {
   const [scanResult, setScanResult] = useState(null)
   const [scanResultInfo, setScanResultInfo] = useState(null)
   const videoRef = useRef(null)
+  const animFrameRef = useRef(null)
 
   useEffect(() => {
     initializeScanner()
     return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
       stopCamera()
     }
   }, [])
@@ -35,7 +37,7 @@ export const Scanner = () => {
   const scanQRCode = () => {
     const checkQRCode = () => {
       if (!videoRef.current || videoRef.current.videoWidth === 0) {
-        requestAnimationFrame(checkQRCode)
+        animFrameRef.current = requestAnimationFrame(checkQRCode)
         return
       }
 
@@ -57,7 +59,7 @@ export const Scanner = () => {
         storeScannedData(code.data)
         stopCamera()
       } else {
-        requestAnimationFrame(checkQRCode)
+        animFrameRef.current = requestAnimationFrame(checkQRCode)
       }
     }
     checkQRCode()

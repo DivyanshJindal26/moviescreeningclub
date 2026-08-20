@@ -84,7 +84,7 @@ const OrderPage = () => {
         )
       )
     } else {
-      setSelectedItems(selectedItems.filter((item) => !item._id === food._id))
+      setSelectedItems(selectedItems.filter((item) => item._id !== food._id))
     }
   }
 

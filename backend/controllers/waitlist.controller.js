@@ -7,7 +7,7 @@ const joinWaitlist = async (req, res) => {
   try {
     const { showtimeId } = req.params
     const { seatsRequested } = req.body
-    const userId = req.user._id
+    const userId = req.user.userId
 
     const movie = await Movie.findOne({ 'showtimes._id': showtimeId })
     if (!movie) return res.status(404).json({ error: 'Showtime not found' })
@@ -46,7 +46,7 @@ const joinWaitlist = async (req, res) => {
 const leaveWaitlist = async (req, res) => {
   try {
     const { showtimeId } = req.params
-    const userId = req.user._id
+    const userId = req.user.userId
 
     const result = await Waitlist.deleteOne({
       user: userId,
@@ -65,7 +65,7 @@ const leaveWaitlist = async (req, res) => {
 const getWaitlistStatus = async (req, res) => {
   try {
     const { showtimeId } = req.params
-    const userId = req.user._id
+    const userId = req.user.userId
 
     const entry = await Waitlist.findOne({
       user: userId,

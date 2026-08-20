@@ -31,7 +31,7 @@ export default function GetOTP() {
         navigate('/signup', { state: { email } })
       }
     } catch (err) {
-      if (err.response.status === 401) {
+      if (err.response?.status === 401) {
         Swal.fire({
           title: 'Error',
           text: 'User already exists please login',

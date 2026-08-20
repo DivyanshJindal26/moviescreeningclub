@@ -1,28 +1,17 @@
 // Background reconciliation for membership payments.
 //
-// Runs every 2 minutes and processes any PendingTransaction that is:
-//   - status = PENDING
-//   - createdAt > 2 minutes ago (gives the returnUrl redirect a chance to land)
+// Runs every 5 minutes. Any PENDING transaction older than the grace period
+// that wasn't resolved by the returnUrl redirect gets flagged MANUAL_REVIEW.
 //
-// For each such transaction it calls Atom's transaction status API and:
-//   - SUCCESS  → atomically marks COMPLETED, issues membership, emails user
-//   - FAILED   → marks FAILED, emails user
-//   - AMBIGUOUS / network error → increments attempt count, leaves PENDING
-//   - PENDING  > 15 min → marks MANUAL_REVIEW, no further automatic processing
-//
-// Idempotency: the PENDING → COMPLETED transition uses findOneAndUpdate with
-// a { status: 'PENDING' } filter. If it returns null the returnUrl handler or
-// a concurrent reconciliation run already handled it — we skip issuance.
+// The returnUrl handler (saveMembership) is the primary path for completing
+// payments — it verifies the HMAC-signed redirect payload from Atom and
+// issues memberships immediately. This job is a safety net for edge cases
+// where the redirect never fires (user closes tab, network issue, etc.).
 
 const PendingTransaction = require('@/models/pendingTransaction.model')
-const User = require('@/models/user/user.model')
-const { queryAtomTransactionStatus } = require('@/utils/payment')
-const { issueMembership } = require('@/controllers/user/memberships.controller')
-const { membershipFailureMail } = require('@/utils/mail')
 
-const RECONCILE_INTERVAL_MS = 2 * 60 * 1000   // 2 minutes
-const PENDING_GRACE_MS = 2 * 60 * 1000         // ignore transactions < 2 min old
-const MANUAL_REVIEW_THRESHOLD_MS = 15 * 60 * 1000 // flag after 15 min
+const RECONCILE_INTERVAL_MS = 5 * 60 * 1000
+const GRACE_MS = 15 * 60 * 1000
 
 let running = false
 
@@ -30,143 +19,18 @@ async function reconcilePending() {
   if (running) return
   running = true
   try {
-    const now = Date.now()
-    const gracePoint = new Date(now - PENDING_GRACE_MS)
-    const reviewPoint = new Date(now - MANUAL_REVIEW_THRESHOLD_MS)
+    const cutoff = new Date(Date.now() - GRACE_MS)
 
-    const pendingTxns = await PendingTransaction.find({
-      status: 'PENDING',
-      createdAt: { $lte: gracePoint }
-    })
-
-    if (pendingTxns.length === 0) return
-
-    console.log(`[reconciliation] processing ${pendingTxns.length} pending transaction(s)`)
-
-    for (const txn of pendingTxns) {
-      const label = `txn ${txn.merchTxnId}`
-      try {
-        if (txn.createdAt <= reviewPoint) {
-          const flagged = await PendingTransaction.findOneAndUpdate(
-            { _id: txn._id, status: 'PENDING' },
-            {
-              $set: {
-                status: 'MANUAL_REVIEW',
-                lastReconciliationAt: new Date()
-              },
-              $inc: { reconciliationAttempts: 1 }
-            },
-            { new: false }
-          )
-          if (flagged) {
-            console.warn(`[reconciliation] ${label} flagged for MANUAL_REVIEW after ${Math.round((now - txn.createdAt) / 60000)} min`)
-          }
-          continue
-        }
-
-        const txnDate = txn.createdAt
-          .toISOString()
-          .replace(/T/, ' ')
-          .replace(/\..+/, '')
-
-        let atomStatus
-        try {
-          atomStatus = await queryAtomTransactionStatus(
-            txn.merchTxnId,
-            txn.amount,
-            txnDate
-          )
-        } catch (apiErr) {
-          console.error(`[reconciliation] ${label} status API threw:`, apiErr.message)
-          await PendingTransaction.findByIdAndUpdate(txn._id, {
-            $inc: { reconciliationAttempts: 1 },
-            $set: { lastReconciliationAt: new Date() }
-          })
-          continue
-        }
-
-        console.log(`[reconciliation] ${label} Atom response:`, {
-          f_code: atomStatus.f_code,
-          mmp_txn: atomStatus.mmp_txn,
-          attempts: txn.reconciliationAttempts + 1
-        })
-
-        if (atomStatus.f_code === 'Ok') {
-          const claimed = await PendingTransaction.findOneAndUpdate(
-            { _id: txn._id, status: 'PENDING' },
-            {
-              $set: {
-                status: 'COMPLETED',
-                atomTxnId: atomStatus.mmp_txn,
-                rawAtomResponse: atomStatus,
-                lastReconciliationAt: new Date()
-              },
-              $inc: { reconciliationAttempts: 1 }
-            },
-            { new: false }
-          )
-
-          if (!claimed) {
-            console.log(`[reconciliation] ${label} already claimed by returnUrl handler, skipping`)
-            continue
-          }
-
-          const user = await User.findById(txn.userId)
-          if (!user) {
-            console.error(`[reconciliation] ${label} user ${txn.userId} not found — membership not issued`)
-            continue
-          }
-
-          await issueMembership({
-            userId: txn.userId,
-            memtype: txn.memtype,
-            txnId: txn.merchTxnId,
-            amount: txn.amount,
-            email: user.email
-          })
-          console.log(`[reconciliation] ${label} COMPLETED — membership issued for ${user.email}`)
-
-        } else if (atomStatus.error) {
-          console.warn(`[reconciliation] ${label} status API error:`, atomStatus.error)
-          await PendingTransaction.findByIdAndUpdate(txn._id, {
-            $inc: { reconciliationAttempts: 1 },
-            $set: {
-              rawAtomResponse: atomStatus,
-              lastReconciliationAt: new Date()
-            }
-          })
-
-        } else {
-          const failed = await PendingTransaction.findOneAndUpdate(
-            { _id: txn._id, status: 'PENDING' },
-            {
-              $set: {
-                status: 'FAILED',
-                rawAtomResponse: atomStatus,
-                lastReconciliationAt: new Date()
-              },
-              $inc: { reconciliationAttempts: 1 }
-            },
-            { new: false }
-          )
-
-          if (failed) {
-            const user = await User.findById(txn.userId)
-            if (user) {
-              membershipFailureMail(user.email).catch((e) =>
-                console.error(`[reconciliation] ${label} failure mail error:`, e.message)
-              )
-            }
-            console.log(`[reconciliation] ${label} FAILED — notified ${user?.email}`)
-          }
-        }
-      } catch (err) {
-        console.error(`[reconciliation] unexpected error for ${label}:`, err.message)
-        await PendingTransaction.findByIdAndUpdate(txn._id, {
-          $inc: { reconciliationAttempts: 1 },
-          $set: { lastReconciliationAt: new Date() }
-        }).catch(() => {})
+    const result = await PendingTransaction.updateMany(
+      { status: 'PENDING', createdAt: { $lte: cutoff } },
+      {
+        $set: { status: 'MANUAL_REVIEW', lastReconciliationAt: new Date() },
+        $inc: { reconciliationAttempts: 1 }
       }
+    )
+
+    if (result.modifiedCount > 0) {
+      console.log(`[reconciliation] flagged ${result.modifiedCount} stale PENDING txn(s) for MANUAL_REVIEW`)
     }
   } catch (err) {
     console.error('[reconciliation] job failed:', err.message)
@@ -176,6 +40,6 @@ async function reconcilePending() {
 }
 
 setInterval(reconcilePending, RECONCILE_INTERVAL_MS)
-console.log('[reconciliation] started — polling every 2 minutes')
+console.log('[reconciliation] started — polling every 5 minutes')
 
 module.exports = { reconcilePending }

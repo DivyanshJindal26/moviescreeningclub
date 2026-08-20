@@ -50,7 +50,7 @@ const Tickets = () => {
       showCancelButton: true
     }).then(async (result) => {
       if (result.isConfirmed) {
-        const res = await api.delete(`/qr/${ticket.id}`)
+        const res = await api.delete(`/qr/${ticket._id}`)
         if (res.status === 200) {
           fetchTickets()
           checkMembershipStatus()
@@ -81,11 +81,15 @@ const Tickets = () => {
                     key={ticket._id}
                     onClick={() => {
                       Swal.fire({
-                        html: `<div className="flex flex-col items-center" style="flex-direction: column;display:flex;align-items: center" ><p><span style="font-weight: 600;">${ticket.movie.title}</span> - ${new Date(
+                        text: `${ticket.movie.title} - ${new Date(
                           ticket.movie.showtime.date
                         ).toLocaleString(
                           'en-IN'
-                        )} - ${ticket.seat}</p><img src=${ticket.qrData} alt="qr code" style="height:40vh;width:40vh" />`,
+                        )} - ${ticket.seat}`,
+                        imageUrl: ticket.qrData,
+                        imageWidth: '40vh',
+                        imageHeight: '40vh',
+                        imageAlt: 'qr code',
 
                         icon: 'info',
                         backdrop: '#0e0e0eff'

@@ -16,8 +16,7 @@ const salt = Buffer.from(req_salt, 'utf8')
 const respassword = Buffer.from(res_dec_key, 'utf8')
 const ressalt = Buffer.from(res_salt, 'utf8')
 const iv = Buffer.from(
-  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-  'utf8'
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 )
 const merchId = `${process.env.MERCH_ID}`
 const merchPass = `${process.env.MERCH_PASS}`
@@ -50,8 +49,8 @@ const generateSignature = (json) => {
     json.payModeSpecificData.subChannel[0].toString() +
     json.payModeSpecificData.bankDetails.bankTxnId.toString()
   var hmac = crypto.createHmac('sha512', resHashKey)
-  data = hmac.update(signatureString)
-  gen_hmac = data.digest('hex')
+  const data = hmac.update(signatureString)
+  const gen_hmac = data.digest('hex')
   return gen_hmac
 }
 
@@ -107,9 +106,7 @@ const getAtomFromGateway = async (
     }
   )
   if (resFromGateway.status !== 200) {
-    return res
-      .status(500)
-      .json({ error: 'Internal server error or Payment Gateway down' })
+    return { error: 'Internal server error or Payment Gateway down' }
   }
   const parsedRespFromGateway = qs.parse(resFromGateway.data)
   if (!parsedRespFromGateway.encData) {

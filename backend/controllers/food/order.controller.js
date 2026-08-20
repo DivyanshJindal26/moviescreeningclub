@@ -1,7 +1,6 @@
 const Order = require('@/models/food/order.model')
 const Food = require('@/models/food/food.model')
-const { getAtomFromGateway } = require('@/utils/payment')
-const { decrypt, generateSignature } = require('@/utils/payment')
+const { getAtomFromGateway, decrypt, generateSignature, queryAtomTransactionStatus } = require('@/utils/payment')
 const crypto = require('crypto')
 const { mailFoodOrder } = require('@/utils/mail')
 const User = require('@/models/user/user.model')
@@ -16,13 +15,21 @@ const createOrder = async (req, res) => {
       available: true,
       quantity: { $gt: 0 }
     })
+    const foundIds = new Set(foods.map((f) => f._id.toString()))
+    const missingItems = items.filter((fwq) => !foundIds.has(fwq._id.toString()))
+    if (missingItems.length > 0) {
+      return res.status(400).json({
+        error: 'Some food items were not found or are unavailable'
+      })
+    }
     const insufficientFoods = items.filter((fwq) => {
       const food = foods.find((f) => f._id.toString() === fwq._id.toString())
       return food && fwq.quantity > food.quantity
     })
     if (insufficientFoods.length > 0) {
       const errorDetails = insufficientFoods
-        .map((food) => {
+        .map((fwq) => {
+          const food = foods.find((f) => f._id.toString() === fwq._id.toString())
           return `${food.name} has only ${food.quantity} available`
         })
         .join(', ')
@@ -30,50 +37,59 @@ const createOrder = async (req, res) => {
         error: 'Insufficient quantity for the following foods: ' + errorDetails
       })
     }
-    const insufficientFoodIds = new Set(
-      insufficientFoods.map((food) => food._id.toString())
-    )
-    const filteredFoods = items.filter(
-      (fwq) => !insufficientFoodIds.has(fwq._id.toString())
-    )
     const order = new Order({
       user: req.user.userId,
       showtime: showtimeId,
-      foodList: filteredFoods,
+      foodList: items,
       email: req.user.email,
       otp: crypto.randomBytes(16).toString('hex').slice(0, 6),
       txnId: crypto.randomBytes(16).toString('hex')
     })
     const saveFood = await Promise.all(
-      filteredFoods.map(async (food) => {
-        const res = await Food.findOneAndUpdate(
+      items.map(async (food) => {
+        const result = await Food.findOneAndUpdate(
           {
             _id: food._id,
             available: true,
-            quantity: { $gte: food.quantity } // Ensure there is enough quantity
+            quantity: { $gte: food.quantity }
           },
           {
-            $inc: { quantity: -food.quantity } // Decrease the quantity
+            $inc: { quantity: -food.quantity }
           },
           {
             new: true
           }
         )
-        return res
+        return result
       })
     )
 
     if (saveFood.includes(null)) {
+      // Restore quantities for items that were decremented
+      await Promise.all(
+        items.map(async (food, i) => {
+          if (saveFood[i] != null) {
+            await Food.findByIdAndUpdate(food._id, { $inc: { quantity: food.quantity } })
+          }
+        })
+      )
       return res.status(400).json({
         message:
           'Failed to add order: insufficient quantity or food unavailable'
       })
     }
 
-    const saved = await order.save()
-
-    if (!saved) {
-      return res.status(400).json({ message: 'Failed to save order' })
+    let saved
+    try {
+      saved = await order.save()
+    } catch (saveErr) {
+      // Restore quantities since order save failed
+      await Promise.all(
+        items.map(async (food) => {
+          await Food.findByIdAndUpdate(food._id, { $inc: { quantity: food.quantity } })
+        })
+      )
+      throw saveErr
     }
     await order.populate('foodList._id')
     const txnId = order.txnId
@@ -130,6 +146,20 @@ const confirmOrder = async (req, res) => {
       return res.redirect(`${process.env.FRONTEND_URL}/?err=transaction_failed`)
     }
 
+    const merchTxnId = jsonData.payInstrument.merchDetails.merchTxnId
+    const payAmount = jsonData.payInstrument.payDetails.totalAmount
+    const txnDate = jsonData.payInstrument.merchDetails.merchTxnDate
+    try {
+      const statusResult = await queryAtomTransactionStatus(merchTxnId, payAmount, txnDate)
+      if (statusResult.statusCode !== 'OTS0000') {
+        console.error('[confirmOrder] Atom status API rejected txn', merchTxnId, statusResult)
+        return res.redirect(`${process.env.FRONTEND_URL}/?err=payment_verification_failed`)
+      }
+    } catch (verifyErr) {
+      console.error('[confirmOrder] Atom status API error for txn', merchTxnId, verifyErr.message)
+      return res.redirect(`${process.env.FRONTEND_URL}/?err=payment_verification_failed`)
+    }
+
     const orderId = jsonData.payInstrument.extras.udf1
     const userId = jsonData.payInstrument.extras.udf2
     const email = jsonData.payInstrument.custDetails.custEmail.toLowerCase()
@@ -169,7 +199,7 @@ const getOrders = async (req, res) => {
       user: req.user.userId
     })
       .populate('showtime')
-      .populate('foods._id')
+      .populate('foodList._id')
     res.status(200).json(orders)
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch orders', error })

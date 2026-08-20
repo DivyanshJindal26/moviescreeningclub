@@ -12,6 +12,10 @@ const getAllMovies = async (req, res) => {
 
 const voteMovie = async (req, res) => {
   const { movieId, voteType } = req.body
+  const normalizedVote = voteType?.toLowerCase?.()
+  if (normalizedVote !== 'yes' && normalizedVote !== 'no') {
+    return res.status(400).json({ message: 'voteType must be "yes" or "no"' })
+  }
   try {
     const movie = await Movie.findById(movieId)
     if (!movie) {
@@ -24,9 +28,9 @@ const voteMovie = async (req, res) => {
     }
 
     // Update the vote count based on the vote type
-    if (voteType === 'yes') {
+    if (normalizedVote === 'yes') {
       movie.yesCount++
-    } else if (voteType === 'no') {
+    } else {
       movie.noCount++
     }
 

@@ -204,7 +204,7 @@ const Movie = () => {
 
         // Check if already booked (with safe navigation for backward compatibility)
         const moviesUsed = activeMembership.moviesUsed || []
-        const alreadyBooked = moviesUsed.some((movieId) => movieId === showtime)
+        const alreadyBooked = moviesUsed.some((usedId) => usedId === movieId)
         if (alreadyBooked) {
           Swal.fire({
             title: 'Error',
@@ -264,11 +264,22 @@ const Movie = () => {
         })
         navigate('/tickets')
       } else {
-        await api.put(`/seatmap/${showtime}`, {
+        const res = await api.put(`/seatmap/${showtime}`, {
           seats: selectedSeats
         })
-        checkMembershipStatus()
-        navigate('/tickets')
+        if (
+          res.status === 200 &&
+          res.data.some((seat) => seat.message === 'Seat assigned')
+        ) {
+          checkMembershipStatus()
+          navigate('/tickets')
+        } else {
+          Swal.fire({
+            title: 'Error',
+            html: `<p>Error booking seats</p> ${res.data.map((seat) => `<p>${seat.seat}: ${seat.message}</p>`).join('')}`,
+            icon: 'error'
+          })
+        }
       }
     } catch (err) {
       Swal.fire({

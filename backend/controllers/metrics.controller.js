@@ -2,7 +2,11 @@ const Memdata = require('@/models/membership.model')
 
 const getMonthlyMetrics = async (req, res) => {
   try {
-    const { year, month } = req.params
+    const year = parseInt(req.params.year, 10)
+    const month = parseInt(req.params.month, 10)
+    if (isNaN(year) || isNaN(month)) {
+      return res.status(400).json({ error: 'Invalid year or month' })
+    }
     const byDesignation = await Memdata.aggregate([
       {
         $lookup: {

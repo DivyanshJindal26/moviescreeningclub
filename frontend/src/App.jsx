@@ -206,8 +206,22 @@ function App() {
                   }
                 />
                 <Route path="/guidelines" element={<Guidelines />} />
-                <Route path="/metrics" element={<Metrics />} />
-                <Route path="/addbasetocore" element={<AddBaseMem />} />
+                <Route
+                  path="/metrics"
+                  element={
+                    <AuthenticatedRoute minLevel="admin">
+                      <Metrics />
+                    </AuthenticatedRoute>
+                  }
+                />
+                <Route
+                  path="/addbasetocore"
+                  element={
+                    <AuthenticatedRoute minLevel="admin">
+                      <AddBaseMem />
+                    </AuthenticatedRoute>
+                  }
+                />
                 <Route
                   path="/ticketprices"
                   element={

@@ -27,8 +27,8 @@ const getFoodItemsByShowTime = async (req, res) => {
     const foodItems = await Food.find({
       showtime: showTimeId
     })
-    res.status(200).json(foodItems)
     await increaseQuantityForUnpaidOrders()
+    res.status(200).json(foodItems)
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

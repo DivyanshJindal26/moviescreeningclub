@@ -31,10 +31,7 @@ const orderSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: true,
-    default: () => {
-      return this.user.email
-    }
+    required: true
   },
   txnId: {
     type: String,

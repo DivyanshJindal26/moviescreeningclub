@@ -52,7 +52,7 @@ const MembershipCard = ({ mem, loading, setLoading }) => {
     } catch (err) {
       Swal.fire({
         title: 'Error!',
-        text: err.response.data.error,
+        text: err.response?.data?.error || 'Something went wrong',
         icon: 'error'
       })
       setLoading(false)

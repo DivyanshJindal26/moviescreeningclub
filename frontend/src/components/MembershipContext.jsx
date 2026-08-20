@@ -19,11 +19,13 @@ export const MembershipProvider = ({ children }) => {
     setLoading(true)
     if (!user) {
       setHasMembership(false)
+      setLoading(false)
       return
     }
     if (resp) {
       setHasMembership(resp.hasMembership)
       setMemberships(resp.memberships)
+      setLoading(false)
       return
     }
     try {

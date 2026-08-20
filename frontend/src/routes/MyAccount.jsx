@@ -32,6 +32,8 @@ const Myaccount = () => {
         return 'bg-gradient-to-tl  from-red-400 to-red-300 dark:to-red-900'
       case 'filmfest':
         return 'bg-gradient-to-tl from-purple-400 to-purple-300 dark:to-purple-900'
+      case 'diamond':
+        return 'bg-gradient-to-tl from-cyan-400 to-teal-300 dark:to-teal-900'
       default:
         return 'bg-gradient-to-tl from-blue-400 to-blue-300 dark:to-blue-900'
     }
