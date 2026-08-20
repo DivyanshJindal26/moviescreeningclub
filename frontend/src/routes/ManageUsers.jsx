@@ -97,7 +97,7 @@ const ManageUsers = () => {
     e.preventDefault()
     setLoading(true)
     try {
-      const response = await api.put(
+      const response = await api.post(
         `/user/details/${encodeURIComponent(selectedUser)}`,
         editForm
       )
@@ -133,7 +133,7 @@ const ManageUsers = () => {
   const handleUpdateMembership = async (membershipId) => {
     setLoading(true)
     try {
-      await api.put(`/user/membership/${membershipId}`, membershipForm)
+      await api.post(`/user/membership/${membershipId}`, membershipForm)
       toast('Membership updated successfully!')
       setEditingMembership(null)
       await fetchUserDetails(selectedUser)
@@ -148,7 +148,7 @@ const ManageUsers = () => {
   const handleUpdateQR = async (qrId) => {
     setLoading(true)
     try {
-      await api.put(`/user/qr/${qrId}`, qrForm)
+      await api.post(`/user/qr/${qrId}`, qrForm)
       toast('QR code updated successfully!')
       setEditingQR(null)
       await fetchUserDetails(selectedUser)

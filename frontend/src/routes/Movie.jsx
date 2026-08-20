@@ -216,7 +216,7 @@ const Movie = () => {
       }
 
       setLoading(true)
-      const res = await api.put(`/seatmap/${showtime}`, {
+      const res = await api.post(`/seatmap/${showtime}`, {
         seats: selectedSeats
       })
       if (
@@ -264,7 +264,7 @@ const Movie = () => {
         })
         navigate('/tickets')
       } else {
-        await api.put(`/seatmap/${showtime}`, {
+        await api.post(`/seatmap/${showtime}`, {
           seats: selectedSeats
         })
         checkMembershipStatus()

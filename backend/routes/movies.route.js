@@ -21,7 +21,7 @@ router.get(
   getMovieByShowTime
 )
 router.post('/add', verifyJWTWithRole(['movievolunteer','admin']), addMovie)
-router.put('/:id', verifyJWTWithRole(['movievolunteer','admin']), updateMovie)
+router.post('/:id', verifyJWTWithRole(['movievolunteer','admin']), updateMovie)
 router.delete('/:id', verifyJWTWithRole(['movievolunteer','admin']), deleteMovie)
 router.post(
   '/:movieId/showtimes',

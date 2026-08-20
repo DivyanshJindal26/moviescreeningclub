@@ -35,7 +35,7 @@ const ModifyMovie = () => {
 
   const handleSave = async () => {
     try {
-      await api.put(`/movie/${editingMovie._id}`, editedData)
+      await api.post(`/movie/${editingMovie._id}`, editedData)
 
       setMovies((prevMovies) =>
         prevMovies.map((movie) =>

@@ -42,7 +42,7 @@ const AdminFood = () => {
 
     if (editingId) {
       try {
-        const response = await api.put(`/food/${editingId}`, newFoodItem)
+        const response = await api.post(`/food/update/${editingId}`, newFoodItem)
         if (!response.ok) {
           Swal.fire({
             title: 'Error',
