@@ -50,7 +50,7 @@ const mailQRs = async (seats, user, movie, showtime) => {
   )
   const transporter = transporterSingleton.getTransporter()
   const mailOptions = {
-    from: process.env.EMAIL,
+    from: process.env.SMTP_FROM || process.env.EMAIL,
     to: user.email,
     subject: `${Math.floor(Math.random() * 100)}- Seat Booking Confirmation`,
     html: `
@@ -161,7 +161,7 @@ const mailQRs = async (seats, user, movie, showtime) => {
 
 const membershipMail = async (membership, email) => {
   const mailOptions = {
-    from: process.env.EMAIL,
+    from: process.env.SMTP_FROM || process.env.EMAIL,
     to: email,
     subject: 'Payment Successful',
     text: `Your payment was successful for ${membership} membership`
@@ -172,7 +172,7 @@ const membershipMail = async (membership, email) => {
 
 const mailOtp = async (otp, email, subject = 'OTP') => {
   const mailOptions = {
-    from: process.env.EMAIL,
+    from: process.env.SMTP_FROM || process.env.EMAIL,
     to: email,
     subject: subject,
     text: `Your OTP is ${otp}`
@@ -187,7 +187,7 @@ const mailFoodOrder = async (
   subject = 'Order via Chalchitra'
 ) => {
   const mailOptions = {
-    from: process.env.EMAIL,
+    from: process.env.SMTP_FROM || process.env.EMAIL,
     to: email,
     subject: subject,
     html: `
@@ -213,7 +213,7 @@ const mailFoodOrder = async (
 
 const membershipFailureMail = async (email) => {
   const mailOptions = {
-    from: process.env.EMAIL,
+    from: process.env.SMTP_FROM || process.env.EMAIL,
     to: email,
     subject: 'Payment verification failed — Chalchitra',
     text:
@@ -226,7 +226,7 @@ const membershipFailureMail = async (email) => {
 
 const waitlistMail = async (email, name, movieTitle, seatsAvailable) => {
   const mailOptions = {
-    from: process.env.EMAIL,
+    from: process.env.SMTP_FROM || process.env.EMAIL,
     to: email,
     subject: `Seats Available — ${movieTitle} | Chalchitra`,
     html: `
