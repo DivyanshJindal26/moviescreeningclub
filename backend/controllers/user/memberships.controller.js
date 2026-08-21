@@ -4,7 +4,11 @@ const User = require('@/models/user/user.model')
 const MemPrice = require('@/models/membershipprice.model')
 const crypto = require('crypto')
 const { membershipMail, membershipFailureMail } = require('@/utils/mail')
-const { getAmount } = require('@/utils/membership')
+const {
+  getAmount,
+  findMemPrice,
+  resolveMemtype
+} = require('@/utils/membership')
 const {
   getAtomFromGateway,
   decrypt,
@@ -48,15 +52,20 @@ const issueMembership = async ({ userId, memtype, txnId, amount, email }) => {
   }
 
   const memData = await MemPrice.find()
-  const memDetails = memData.find(
-    (m) => m.name === memtype || m.passType === memtype
-  )
+  const memDetails = findMemPrice(memData, memtype)
   if (!memDetails) throw new Error(`Unknown memtype: ${memtype}`)
+
+  // The pending transaction stores whatever the client asked for (a price
+  // name or a passType); normalise it to the value the schema accepts.
+  const resolvedMemtype = resolveMemtype(memDetails)
+  if (!resolvedMemtype) {
+    throw new Error(`No membership type maps to '${memtype}'`)
+  }
 
   const { validity, availQR, passType, movieCount } = memDetails
   const membershipData = {
     user: userId,
-    memtype,
+    memtype: resolvedMemtype,
     txnId,
     validity,
     availQR,
@@ -71,11 +80,11 @@ const issueMembership = async ({ userId, memtype, txnId, amount, email }) => {
   const membership = new Membership(membershipData)
   await membership.save()
   try {
-    await membershipMail(memtype, email.toLowerCase())
+    await membershipMail(memDetails.name, email.toLowerCase())
   } catch (mailError) {
     console.error(`[issueMembership] membership saved but email failed for txn ${txnId}:`, mailError.message)
   }
-  console.log(`[issueMembership] issued ${memtype} membership for txn ${txnId}`)
+  console.log(`[issueMembership] issued ${resolvedMemtype} membership for txn ${txnId}`)
   return { membership }
 }
 
@@ -246,12 +255,19 @@ const manualAdd = async (req, res) => {
       return res.status(404).json({ error: 'User not found' })
     }
     const memData = await MemPrice.find()
-    const memDetails = memData.find((m) => m.name === membershipType)
+    const memDetails = findMemPrice(memData, membershipType)
     if (!memDetails) {
       return res.status(400).json({ error: 'Invalid membership type' })
     }
 
-    const { validity, availQR, passType, movieCount } = memDetails
+    const memtype = resolveMemtype(memDetails)
+    if (!memtype) {
+      return res
+        .status(400)
+        .json({ error: `No membership type maps to '${membershipType}'` })
+    }
+
+    const { validity, availQR, passType } = memDetails
 
     const parsedPasses =
       passes !== undefined && passes !== '' && !Number.isNaN(Number(passes))
@@ -262,20 +278,6 @@ const manualAdd = async (req, res) => {
     if (Number.isNaN(parsedAmount)) {
       return res.status(400).json({ error: 'Invalid amount' })
     }
-
-    // Map membership name to enum value
-    const memtypeMapping = {
-      base: 'base',
-      silver: 'silver',
-      gold: 'gold',
-      diamond: 'diamond',
-      'Film Fest': 'filmFest',
-      'Foodie Film Fest': 'filmFest'
-    }
-
-    const memtype =
-      memtypeMapping[membershipType] ||
-      membershipType.toLowerCase().replace(/\s+/g, '')
 
     const membershipData = {
       user: user._id,
@@ -351,10 +353,8 @@ const requestMembership = async (req, res) => {
     const { userId } = req.user
     const { memtype } = req.body
     const memData = await MemPrice.find()
-    const validMem = memData.find(
-      (m) => m.name === memtype || m.passType === memtype
-    )
-    if (!memtype || !validMem) {
+    const validMem = memtype ? findMemPrice(memData, memtype) : null
+    if (!validMem) {
       return res.status(400).json({ message: 'Membership type is required' })
     }
     const user = await User.findById(userId)

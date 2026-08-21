@@ -27,11 +27,10 @@ const MembershipCard = ({ mem, loading, setLoading }) => {
     try {
       if (loading) return
       setLoading(true)
-      const memtype = mem.name.toLowerCase().includes('film fest')
-        ? 'filmFest'
-        : mem.name
+      // Send the price's name — it is unique, so the backend resolves the
+      // pass type and price from it without guessing.
       const res = await api.post('/membership/request', {
-        memtype
+        memtype: mem.name
       })
       setLoading(false)
       if (res.status !== 200) {
