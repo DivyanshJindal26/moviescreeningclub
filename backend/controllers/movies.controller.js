@@ -1,5 +1,6 @@
 const Movie = require('@/models/movie.model')
 const SeatMap = require('@/models/seatmap.model')
+const QR = require('@/models/qr.model')
 const { isAllowedLvl } = require('@/middleware')
 const mongoose = require('mongoose')
 const addMovie = (req, res) => {
@@ -179,6 +180,77 @@ const addMovieShowtimes = async (req, res) => {
   }
 }
 
+// Reschedule an existing showtime without disturbing its bookings.
+//
+// Everything that ties a booking to a show keys off the showtime's _id, so the
+// seat map and its QRs are left exactly as they are. Only the date is carried
+// across to the two places that copy it: SeatMap.date (which gates booking) and
+// the expirationDate on already-issued QRs (which is derived as showtime + 3h,
+// and would otherwise expire tickets early — or keep them alive too long — once
+// the show moves).
+const updateMovieShowtime = async (req, res) => {
+  const session = await mongoose.startSession()
+  session.startTransaction()
+  try {
+    const { movieId, showtimeId } = req.params
+    const { date } = req.body
+
+    const newDate = new Date(date)
+    if (!date || isNaN(newDate.getTime())) {
+      await session.abortTransaction()
+      return res.status(400).json({ error: 'A valid date is required' })
+    }
+    if (newDate < new Date()) {
+      await session.abortTransaction()
+      return res
+        .status(400)
+        .json({ error: 'Showtime date must be in the future' })
+    }
+
+    const movie = await Movie.findById(movieId).session(session)
+    if (!movie) {
+      await session.abortTransaction()
+      return res.status(404).json({ error: 'Movie not found' })
+    }
+
+    const showtime = movie.showtimes.id(showtimeId)
+    if (!showtime) {
+      await session.abortTransaction()
+      return res.status(404).json({ error: 'Showtime not found' })
+    }
+
+    showtime.date = newDate
+    await movie.save({ session })
+
+    await SeatMap.updateOne(
+      { showtimeId },
+      { $set: { date: newDate } },
+      { session }
+    )
+
+    const expirationDate = new Date(newDate.getTime() + 3 * 60 * 60 * 1000)
+    const { modifiedCount } = await QR.updateMany(
+      { showtime: showtimeId },
+      { $set: { expirationDate } },
+      { session }
+    )
+
+    await session.commitTransaction()
+    console.log(
+      `[updateMovieShowtime] showtime ${showtimeId} moved to ${newDate.toISOString()}, ${modifiedCount} ticket(s) rescheduled`
+    )
+    return res.json(movie)
+  } catch (error) {
+    if (session.inTransaction()) {
+      await session.abortTransaction()
+    }
+    console.error('Error updating showtime:', error)
+    return res.status(500).json({ error: 'Error updating showtime' })
+  } finally {
+    session.endSession()
+  }
+}
+
 const deleteMovieShowtimes = async (req, res) => {
   try {
     const { movieId, showtimeId } = req.params
@@ -210,5 +282,6 @@ module.exports = {
   getMovieById,
   getMovieByShowTime,
   addMovieShowtimes,
+  updateMovieShowtime,
   deleteMovieShowtimes
 }

@@ -7,6 +7,7 @@ const {
   getMovieById,
   getMovieByShowTime,
   addMovieShowtimes,
+  updateMovieShowtime,
   deleteMovieShowtimes
 } = require('@/controllers/movies.controller')
 const { verifyJWTWithRole } = require('@/middleware')
@@ -20,17 +21,22 @@ router.get(
   verifyJWTWithRole('standard'),
   getMovieByShowTime
 )
-router.post('/add', verifyJWTWithRole(['movievolunteer','admin']), addMovie)
-router.post('/:id', verifyJWTWithRole(['movievolunteer','admin']), updateMovie)
-router.post('/delete/:id', verifyJWTWithRole(['movievolunteer','admin']), deleteMovie)
+router.post('/add', verifyJWTWithRole('movievolunteer'), addMovie)
+router.post('/:id', verifyJWTWithRole('movievolunteer'), updateMovie)
+router.post('/delete/:id', verifyJWTWithRole('movievolunteer'), deleteMovie)
 router.post(
   '/:movieId/showtimes',
-  verifyJWTWithRole(['movievolunteer','admin']),
+  verifyJWTWithRole('movievolunteer'),
   addMovieShowtimes
 )
 router.post(
+  '/:movieId/showtimes/:showtimeId',
+  verifyJWTWithRole('movievolunteer'),
+  updateMovieShowtime
+)
+router.post(
   '/delete/:movieId/:showtimeId',
-  verifyJWTWithRole(['movievolunteer' , 'admin']),
+  verifyJWTWithRole('movievolunteer'),
   deleteMovieShowtimes
 )
 

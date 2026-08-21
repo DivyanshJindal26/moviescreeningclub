@@ -16,8 +16,18 @@ const allowedLvl = (level) => {
   return ['admin', 'volunteer', 'movievolunteer', 'ticketvolunteer', 'standard']
 }
 
-const isAllowedLvl = (minLevel, userType) =>
-  allowedLvl(minLevel).includes(userType)
+const isAllowedLvl = (minLevel, userType) => {
+  // allowedLvl falls back to "everyone" for an unrecognised level, so a caller
+  // passing anything but a role string (an array of roles, say) would silently
+  // turn its route into an open one. Fail closed instead.
+  if (typeof minLevel !== 'string') {
+    console.error(
+      `[auth] expected a role string, got ${JSON.stringify(minLevel)} — denying`
+    )
+    return false
+  }
+  return allowedLvl(minLevel).includes(userType)
+}
 
 const verifyJWTWithRole = (minRole = 'standard') => {
   return (req, res, next) => {
