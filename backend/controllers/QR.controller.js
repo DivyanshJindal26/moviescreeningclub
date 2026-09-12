@@ -124,33 +124,28 @@ const cancelQr = async (req, res) => {
     }
     
     if (!movie.free) {
-      // Find membership - for Film Fest Pass, don't check availQR
-      const hasMembership = await Membership.findOne({
-        user: req.user.userId,
-        isValid: true,
-        $or: [
-          { memtype: 'filmFest' }, // Film Fest Pass doesn't use availQR
-          { availQR: { $gt: 0 } } // Standard passes need availQR
-        ]
-      }).session(session)
+      const linkedMembership = qr.membership
+        ? await Membership.findById(qr.membership).session(session)
+        : null
 
-      if (hasMembership) {
-        // If Film Fest Pass, remove the movie from moviesUsed
-        if (hasMembership.memtype === 'filmFest') {
-          // Backward compatibility: initialize moviesUsed if it doesn't exist
-          if (!hasMembership.moviesUsed) {
-            hasMembership.moviesUsed = []
+      if (linkedMembership && linkedMembership.validitydate >= new Date()) {
+        if (linkedMembership.memtype === 'filmFest') {
+          if (!linkedMembership.moviesUsed) {
+            linkedMembership.moviesUsed = []
           }
-          hasMembership.moviesUsed = hasMembership.moviesUsed.filter(
+          linkedMembership.moviesUsed = linkedMembership.moviesUsed.filter(
             (id) => id.toString() !== qr.showtime.toString()
           )
+          const moviesUsed = linkedMembership.moviesUsed.length
+          const movieCount = linkedMembership.movieCount || 0
+          if (moviesUsed < movieCount) {
+            linkedMembership.isValid = true
+          }
         } else {
-          hasMembership.availQR += 1
+          linkedMembership.availQR += 1
+          linkedMembership.isValid = true
         }
-        hasMembership.validitydate = new Date(
-          Date.now() + hasMembership.validity * 1000
-        )
-        await hasMembership.save({ session })
+        await linkedMembership.save({ session })
       } else {
         const { validity } = memData.find((m) => m.name === 'base')
         const assignMembership = new Membership({

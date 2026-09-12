@@ -171,50 +171,27 @@ const Movie = () => {
   const maxAllowed = movieFree
     ? freePasses
     : (() => {
-        const activeMembership = memberships?.find(
-          (membership) => membership.isValid
-        )
-        if (!activeMembership) return 0
+        const actives = memberships?.filter((m) => m.isValid) || []
+        if (actives.length === 0) return 0
 
-        // For Film Fest Pass, only allow 1 seat at a time and limited by movie count
-        if (activeMembership.memtype === 'filmFest') {
-          const moviesUsedCount = activeMembership.moviesUsed?.length || 0
-          const canBuyMore = moviesUsedCount < activeMembership.movieCount
-          return canBuyMore ? 1 : 0
+        const standardPasses = actives
+          .filter((m) => m.memtype !== 'filmFest')
+          .reduce((sum, m) => sum + (m.availQR ?? 0), 0)
+
+        if (standardPasses > 0) return standardPasses
+
+        // Fall back to filmFest passes if no standard passes
+        for (const m of actives) {
+          if (m.memtype === 'filmFest') {
+            const moviesUsedCount = m.moviesUsed?.length || 0
+            if (moviesUsedCount < (m.movieCount || 0)) return 1
+          }
         }
 
-        return activeMembership.availQR ?? 0
+        return 0
       })()
   const bookSeats = async () => {
     try {
-      const activeMembership = memberships?.find(
-        (membership) => membership.isValid
-      )
-
-      // Film Fest Pass validation (with backward compatibility)
-      if (activeMembership?.memtype === 'filmFest') {
-        if (selectedSeats.length > 1) {
-          Swal.fire({
-            title: 'Error',
-            text: 'Film Fest Pass: You can only buy 1 ticket at a time',
-            icon: 'error'
-          })
-          return
-        }
-
-        // Check if already booked (with safe navigation for backward compatibility)
-        const moviesUsed = activeMembership.moviesUsed || []
-        const alreadyBooked = moviesUsed.some((movieId) => movieId === showtime)
-        if (alreadyBooked) {
-          Swal.fire({
-            title: 'Error',
-            text: 'Film Fest Pass: You have already booked a ticket for this movie',
-            icon: 'error'
-          })
-          return
-        }
-      }
-
       setLoading(true)
       const res = await api.post(`/seatmap/${showtime}`, {
         seats: selectedSeats
@@ -410,25 +387,9 @@ const Movie = () => {
                 <span className="font-bold">
                   {movieFree
                     ? 'No. of Free Passes Left: '
-                    : memberships?.find((membership) => membership.isValid)
-                          ?.memtype === 'filmFest'
-                      ? 'Film Fest Pass - Movies Left: '
-                      : 'No. of Paid Passes Left: '}
+                    : 'No. of Paid Passes Left: '}
                 </span>
-                {movieFree
-                  ? freePasses
-                  : (() => {
-                      const activeMembership = memberships?.find(
-                        (membership) => membership.isValid
-                      )
-                      if (activeMembership?.memtype === 'filmFest') {
-                        return (
-                          activeMembership.movieCount -
-                          (activeMembership.moviesUsed?.length || 0)
-                        )
-                      }
-                      return activeMembership?.availQR ?? 0
-                    })()}
+                {movieFree ? freePasses : maxAllowed}
               </p>
               <p className="mt-2 text-md">
                 <span className="font-bold">Number of seats left: </span>

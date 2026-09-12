@@ -1,10 +1,8 @@
 import { Star } from '@/components/icons/Buy'
 import { useLogin } from '@/components/LoginContext'
-import { useMembershipContext } from '@/components/MembershipContext'
 import { api } from '@/utils/api'
 import { getUserType } from '@/utils/user'
 import { useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
 import Swal from 'sweetalert2'
 
 const getMemData = async () => {
@@ -127,7 +125,6 @@ const MembershipCard = ({ mem, loading, setLoading }) => {
 
 const BuyMemberships = () => {
   const { user } = useLogin()
-  const { hasMembership } = useMembershipContext()
   const [loading, setLoading] = useState(false)
   const [memData, setMemData] = useState([]) // Store fetched data
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -146,10 +143,6 @@ const BuyMemberships = () => {
     }
     fetchData()
   }, [])
-
-  if (hasMembership) {
-    return <Navigate to="/tickets" />
-  }
 
   // if (!isMobile) {
   //   return (

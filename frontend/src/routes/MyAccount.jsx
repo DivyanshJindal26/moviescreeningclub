@@ -9,17 +9,16 @@ const Myaccount = () => {
     useMembershipContext()
   const navigate = useNavigate()
   const [previousMemberships, setPreviousMemberships] = useState([])
-  const [currentMembership, setCurrentMembership] = useState(null)
+  const [activeMemberships, setActiveMemberships] = useState([])
 
   useEffect(() => {
     if (memberships) {
-      setCurrentMembership(
-        memberships.filter((membership) => membership.isValid)[0]
+      setActiveMemberships(
+        memberships.filter((membership) => membership.isValid)
       )
       setPreviousMemberships(
         memberships.filter((membership) => !membership.isValid)
       )
-      console.log('memberships:', memberships, previousMemberships)
     }
   }, [memberships])
   const getColor = (memType) => {
@@ -66,56 +65,49 @@ const Myaccount = () => {
       <p className="mb-4 text-2xl font-semibold lg:text-3xl">
         Your Memberships
       </p>
-      {currentMembership && (
+      {activeMemberships.length > 0 && (
         <div className="flex w-full flex-col gap-4 max-sm:items-center sm:w-3/4">
           <p className="mb-2 text-xl font-semibold lg:text-2xl">
             Active Memberships
           </p>
           <div className="flex flex-wrap gap-6">
-            <div className="flex flex-col justify-center rounded-lg bg-white shadow-lg dark:shadow-white/10 dark:bg-[#212121] px-3 py-3">
-              <div
-                className={`flex items-center justify-center rounded-md ${getColor(
-                  currentMembership.memtype
-                )} mb-4 h-[280px] w-[230px] text-center max-sm:h-[200px] lg:w-[250px]`}
-                // style={getCardStyle(230, 180)}
-              >
-                <p className="text-xl font-semibold lg:text-4xl">
-                  {toTitleCase(currentMembership.memtype)}
+            {activeMemberships.map((membership) => (
+              <div key={membership._id} className="flex flex-col justify-center rounded-lg bg-white shadow-lg dark:shadow-white/10 dark:bg-[#212121] px-3 py-3">
+                <div
+                  className={`flex items-center justify-center rounded-md ${getColor(
+                    membership.memtype
+                  )} mb-4 h-[280px] w-[230px] text-center max-sm:h-[200px] lg:w-[250px]`}
+                >
+                  <p className="text-xl font-semibold lg:text-4xl">
+                    {toTitleCase(membership.memtype)}
+                  </p>
+                </div>
+                <p>
+                  <strong>Purchase Date : </strong>{' '}
+                  {new Date(membership.purchasedate).toLocaleDateString(
+                    'en-IN'
+                  )}
+                </p>
+                <p className="flex capitalize">
+                  <strong> Validity till : </strong>{' '}
+                  {new Date(membership.validitydate).toLocaleDateString(
+                    'en-IN'
+                  )}
+                </p>
+                <p className="flex capitalize">
+                  <strong>
+                    {membership.memtype === 'filmFest'
+                      ? 'Movies Left : '
+                      : 'Passes Left : '}
+                  </strong>
+                  {membership.memtype === 'filmFest'
+                    ? (membership.movieCount || 0) -
+                      (membership.moviesUsed || []).length
+                    : membership.availQR}
                 </p>
               </div>
-              <p>
-                <strong>Purchase Date : </strong>{' '}
-                {new Date(currentMembership.purchasedate).toLocaleDateString(
-                  'en-IN'
-                )}
-              </p>
-              <p className="flex capitalize">
-                <strong> Validity till : </strong>{' '}
-                {new Date(currentMembership.validitydate).toLocaleDateString(
-                  'en-IN'
-                )}
-              </p>
-              <p className="flex capitalize">
-                <strong>
-                  {currentMembership.memtype === 'filmFest'
-                    ? 'Movies Left : '
-                    : 'Passes Left : '}
-                </strong>
-                {currentMembership.memtype === 'filmFest'
-                  ? (currentMembership.movieCount || 0) -
-                    (currentMembership.moviesUsed || []).length
-                  : currentMembership.availQR}
-              </p>
-            </div>
+            ))}
           </div>
-          {/* {currentMembership && (
-            <button
-              onClick={suspendMembership}
-              className="mt-8 w-fit rounded bg-red-500 px-4 py-2 font-bold hover:bg-red-700 text-white"
-            >
-              Suspend Current Membership
-            </button>
-          )} */}
         </div>
       )}
       {previousMemberships.length > 0 && (
@@ -151,7 +143,7 @@ const Myaccount = () => {
           </div>
         </div>
       )}
-      {previousMemberships.length === 0 && !currentMembership && (
+      {previousMemberships.length === 0 && activeMemberships.length === 0 && (
         <p className="text-xl sm:text-4xl">No memberships</p>
       )}
     </div>

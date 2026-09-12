@@ -103,56 +103,26 @@ const seatAssign = async (req, res) => {
     if (new Date(showtime.date) < new Date(Date.now() - 3 * 60 * 60 * 1000)) {
       return res.status(400).json({ error: 'Invalid showtime' })
     }
-    const currentMembership = await Membership.findOne({
+    const activeMemberships = await Membership.find({
       user: req.user.userId,
       isValid: true
-    })
+    }).sort({ validitydate: 1 })
 
-    // Check if trying to use Film Fest Pass (with backward compatibility)
-    const isFilmFestPass =
-      currentMembership && currentMembership.memtype === 'filmFest'
+    const standardMemberships = activeMemberships.filter(
+      (m) => m.memtype !== 'filmFest' && m.validitydate >= new Date()
+    )
+    const filmFestMemberships = activeMemberships.filter(
+      (m) => m.memtype === 'filmFest' && m.validitydate >= new Date()
+    )
+
+    const totalStandardPasses = standardMemberships.reduce(
+      (sum, m) => sum + m.availQR,
+      0
+    )
 
     for (const seat of seats) {
       if (!seatMap.seats.has(seat)) {
         return res.status(400).json({ error: 'Invalid seat(s)' })
-      }
-    }
-
-    // Film Fest Pass validation: max 1 ticket per movie, max X movies total
-    if (isFilmFestPass && seats.length > 0) {
-      // Backward compatibility: initialize moviesUsed if it doesn't exist
-      if (!currentMembership.moviesUsed) {
-        currentMembership.moviesUsed = []
-      }
-
-      // Check if user already has a ticket for this movie/showtime
-      const existingTicket = await QR.findOne({
-        user: req.user.userId,
-        membership: currentMembership._id,
-        showtime: showtimeId,
-        deleted: false
-      })
-
-      if (existingTicket) {
-        return res.status(400).json({
-          error: 'Film Fest Pass: You can only buy 1 ticket per movie'
-        })
-      }
-
-      // Check if user has reached movie limit
-      const moviesUsedCount = currentMembership.moviesUsed.length
-      const movieLimit = currentMembership.movieCount || 0
-      if (moviesUsedCount >= movieLimit) {
-        return res.status(400).json({
-          error: `Film Fest Pass: You have already used all ${movieLimit} movies`
-        })
-      }
-
-      // For Film Fest Pass, only allow 1 seat per purchase
-      if (seats.length > 1) {
-        return res.status(400).json({
-          error: 'Film Fest Pass: You can only buy 1 ticket at a time'
-        })
       }
     }
     let seatRes = []
@@ -178,25 +148,71 @@ const seatAssign = async (req, res) => {
         })
       }
     } else {
-      if (!currentMembership) {
-        return res.status(400).json({ error: 'no active membership' })
-      }
-      if (currentMembership.validitydate < new Date()) {
-        currentMembership.isValid = false
-        await currentMembership.save()
-
+      if (standardMemberships.length === 0 && filmFestMemberships.length === 0) {
         return res.status(400).json({ error: 'no active membership' })
       }
 
-      // Skip availQR check for Film Fest Pass (it uses movieCount instead)
-      if (currentMembership.memtype !== 'filmFest') {
-        if (currentMembership.availQR < seats.length) {
+      // Try to use standard memberships first
+      if (totalStandardPasses >= seats.length) {
+        // Standard memberships have enough passes
+      } else if (filmFestMemberships.length > 0 && seats.length === 1) {
+        // Check if any filmFest membership can be used for this showtime
+        let canUseFilmFest = false
+        for (const ffm of filmFestMemberships) {
+          if (!ffm.moviesUsed) ffm.moviesUsed = []
+          const moviesUsedCount = ffm.moviesUsed.length
+          const movieLimit = ffm.movieCount || 0
+          if (moviesUsedCount >= movieLimit) continue
+
+          const existingTicket = await QR.findOne({
+            user: req.user.userId,
+            membership: ffm._id,
+            showtime: showtimeId,
+            deleted: false
+          })
+          if (!existingTicket) {
+            canUseFilmFest = true
+            break
+          }
+        }
+        if (!canUseFilmFest && totalStandardPasses < seats.length) {
           return res
             .status(400)
             .json({ error: 'No valid membership or not enough passes left' })
         }
+      } else {
+        return res
+          .status(400)
+          .json({ error: 'No valid membership or not enough passes left' })
       }
     }
+
+    // Build a list of memberships to consume from (soonest-expiring first)
+    // Standard memberships are preferred; filmFest used only when standard passes are insufficient
+    let useFilmFest = false
+    let filmFestMembership = null
+    if (!movie.free && totalStandardPasses < seats.length && filmFestMemberships.length > 0 && seats.length === 1) {
+      for (const ffm of filmFestMemberships) {
+        if (!ffm.moviesUsed) ffm.moviesUsed = []
+        if (ffm.moviesUsed.length < (ffm.movieCount || 0)) {
+          const existingTicket = await QR.findOne({
+            user: req.user.userId,
+            membership: ffm._id,
+            showtime: showtimeId,
+            deleted: false
+          })
+          if (!existingTicket) {
+            useFilmFest = true
+            filmFestMembership = ffm
+            break
+          }
+        }
+      }
+    }
+
+    let standardIdx = 0
+    const modifiedMemberships = new Set()
+
     for (let seat of seats) {
       if (seatMap.seats.get(seat)) {
         seatRes.push({
@@ -206,10 +222,24 @@ const seatAssign = async (req, res) => {
         continue
       }
 
+      let membershipForSeat = null
+      if (!movie.free) {
+        if (useFilmFest) {
+          membershipForSeat = filmFestMembership
+        } else {
+          while (standardIdx < standardMemberships.length && standardMemberships[standardIdx].availQR <= 0) {
+            standardIdx++
+          }
+          if (standardIdx < standardMemberships.length) {
+            membershipForSeat = standardMemberships[standardIdx]
+          }
+        }
+      }
+
       const qr = new QR({
         user: req.user.userId,
-        membership: movie.free ? null : currentMembership._id,
-        txnId: movie.free ? null : currentMembership._id,
+        membership: movie.free ? null : membershipForSeat?._id,
+        txnId: movie.free ? null : membershipForSeat?._id,
         seat: seat,
         showtime: showtimeId,
         code: '',
@@ -242,19 +272,15 @@ const seatAssign = async (req, res) => {
         } else {
           throw new Error('Error assigning seat')
         }
-        if (!movie.free) {
-          if (isFilmFestPass) {
-            // Backward compatibility: initialize moviesUsed if it doesn't exist
-            if (!currentMembership.moviesUsed) {
-              currentMembership.moviesUsed = []
-            }
-            // Add this showtime's movie to moviesUsed if not already there
-            if (!currentMembership.moviesUsed.includes(showtimeId)) {
-              currentMembership.moviesUsed.push(showtimeId)
+        if (!movie.free && membershipForSeat) {
+          if (useFilmFest && membershipForSeat.memtype === 'filmFest') {
+            if (!membershipForSeat.moviesUsed.includes(showtimeId)) {
+              membershipForSeat.moviesUsed.push(showtimeId)
             }
           } else {
-            currentMembership.availQR -= 1
+            membershipForSeat.availQR -= 1
           }
+          modifiedMemberships.add(membershipForSeat)
         }
         seatRes.push({
           seat: seat,
@@ -270,23 +296,17 @@ const seatAssign = async (req, res) => {
       }
     }
 
-    if (currentMembership) {
-      // For standard passes, invalidate when no more QR codes
-      if (
-        currentMembership.memtype !== 'filmFest' &&
-        currentMembership.availQR === 0
-      ) {
-        currentMembership.isValid = false
-      }
-      // For Film Fest Pass, invalidate when all movies are used
-      if (currentMembership.memtype === 'filmFest') {
-        const moviesUsed = currentMembership.moviesUsed || []
-        const movieCount = currentMembership.movieCount || 0
+    for (const mem of modifiedMemberships) {
+      if (mem.memtype === 'filmFest') {
+        const moviesUsed = mem.moviesUsed || []
+        const movieCount = mem.movieCount || 0
         if (moviesUsed.length >= movieCount) {
-          currentMembership.isValid = false
+          mem.isValid = false
         }
+      } else if (mem.availQR === 0) {
+        mem.isValid = false
       }
-      await currentMembership.save()
+      await mem.save()
     }
 
     if (seatRes.length === 0) {

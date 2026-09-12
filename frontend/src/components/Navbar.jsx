@@ -9,10 +9,8 @@ import { isAllowedLvl } from '@/utils/levelCheck'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLogin } from './LoginContext'
-import { useMembershipContext } from './MembershipContext'
 const Navbar = () => {
   const { loggedIn, logout, user } = useLogin()
-  const { hasMembership } = useMembershipContext()
   const [showMenu, setShowMenu] = useState(false)
   const dropdownRef = useRef(null)
 
@@ -123,11 +121,9 @@ const Navbar = () => {
             <NavItem to="/tickets" toggleMenu={toggleMenu}>
               My Tickets
             </NavItem>
-            {!hasMembership && (
-              <NavItem to="/buy" toggleMenu={toggleMenu}>
-                Buy a new Membership
-              </NavItem>
-            )}
+            <NavItem to="/buy" toggleMenu={toggleMenu}>
+              Buy a new Membership
+            </NavItem>
             {/* <NavItem to="/vote" toggleMenu={toggleMenu}>
               Vote Page
             </NavItem> */}

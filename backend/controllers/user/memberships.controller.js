@@ -41,13 +41,6 @@ const issueMembership = async ({ userId, memtype, txnId, amount, email }) => {
       anyMem.isValid = false
       if (anyMem.memtype !== 'filmFest') anyMem.availQR = 0
       await anyMem.save()
-    } else {
-      // User already has a valid membership — this can happen if they bought
-      // twice in rapid succession. Skip issuance; money will need manual review.
-      console.warn(
-        `[issueMembership] user ${userId} already has active membership, skipping issuance for txn ${txnId}`
-      )
-      return { skipped: true }
     }
   }
 
@@ -367,24 +360,21 @@ const requestMembership = async (req, res) => {
       isValid: true
     })
     for (const mem of userMemberships) {
-      let hasValidPasses = false
-      if (mem.memtype === 'filmFest') {
-        const moviesUsed = mem.moviesUsed || []
-        const movieCount = mem.movieCount || 0
-        hasValidPasses =
-          mem.validitydate > Date.now() && moviesUsed.length < movieCount
+      let shouldInvalidate = false
+      if (mem.validitydate < Date.now()) {
+        shouldInvalidate = true
+      } else if (mem.memtype === 'filmFest') {
+        shouldInvalidate =
+          (mem.moviesUsed || []).length >= (mem.movieCount || 0)
       } else {
-        hasValidPasses = mem.validitydate > Date.now() && mem.availQR > 0
+        shouldInvalidate = mem.availQR <= 0
       }
 
-      if (hasValidPasses) {
-        return res
-          .status(400)
-          .json({ message: 'User already has a valid membership' })
+      if (shouldInvalidate) {
+        mem.isValid = false
+        if (mem.memtype !== 'filmFest') mem.availQR = 0
+        await mem.save()
       }
-      mem.isValid = false
-      if (mem.memtype !== 'filmFest') mem.availQR = 0
-      await mem.save()
     }
 
     const txnId = crypto.randomBytes(16).toString('hex')
