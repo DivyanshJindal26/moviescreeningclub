@@ -1,13 +1,8 @@
-import { useLogin } from '@/components/LoginContext'
 import { useMembershipContext } from '@/components/MembershipContext'
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 
 const Myaccount = () => {
-  const { loggedIn } = useLogin()
-  const { hasMembership, checkMembershipStatus, memberships } =
-    useMembershipContext()
-  const navigate = useNavigate()
+  const { memberships } = useMembershipContext()
   const [previousMemberships, setPreviousMemberships] = useState([])
   const [activeMemberships, setActiveMemberships] = useState([])
 
